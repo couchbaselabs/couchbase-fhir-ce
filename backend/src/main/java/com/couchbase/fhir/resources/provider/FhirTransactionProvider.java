@@ -73,7 +73,7 @@ public class FhirTransactionProvider {
             // Add audit information
             FhirAuditService auditService = new FhirAuditService();
             UserAuditInfo auditInfo = auditService.getCurrentUserAuditInfo();
-            auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE");
+            auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE" , "1");
 
             if (resource instanceof DomainResource) {
                 ((DomainResource) resource).getMeta().setLastUpdated(new Date());

@@ -21,14 +21,14 @@ public class FhirAuditService {
     /**
      * Add comprehensive audit information to resource meta using centralized helper
      */
-    public void addAuditInfoToMeta(IBaseResource resource, String userId, String operation) {
+    public void addAuditInfoToMeta(IBaseResource resource, String userId, String operation , String versionId) {
         UserAuditInfo auditInfo = getCurrentUserAuditInfo();
-        addAuditInfoToMeta(resource, auditInfo, operation);
+        addAuditInfoToMeta(resource, auditInfo, operation ,versionId);
     }
     /**
      * Add comprehensive audit information to resource meta with detailed audit info using centralized helper
      */
-    public void addAuditInfoToMeta(IBaseResource resource, UserAuditInfo auditInfo, String operation) {
+    public void addAuditInfoToMeta(IBaseResource resource, UserAuditInfo auditInfo, String operation  , String versionId) {
         try {
             if (!(resource instanceof Resource)) {
                 logger.warn("⚠️ Cannot add audit info to non-R4 resource: {}", resource.getClass().getSimpleName());
@@ -51,7 +51,7 @@ public class FhirAuditService {
                     userId,
                     operation,
                     new Date(),        // lastUpdated - always current time
-                    "1",              // versionId - simple for now
+                    versionId,              // versionId - simple for now
                     existingProfiles  // preserve existing profiles
             );
 

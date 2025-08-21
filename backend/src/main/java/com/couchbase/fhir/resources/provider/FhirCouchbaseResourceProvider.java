@@ -1,36 +1,40 @@
 package com.couchbase.fhir.resources.provider;
 
 import ca.uhn.fhir.context.*;
+import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.*;
 import ca.uhn.fhir.rest.api.MethodOutcome;
+import ca.uhn.fhir.rest.api.SummaryEnum;
 import ca.uhn.fhir.rest.api.server.RequestDetails;
+import ca.uhn.fhir.rest.param.DateParam;
+import ca.uhn.fhir.rest.param.StringParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
 import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
+import ca.uhn.fhir.validation.FhirValidator;
 import ca.uhn.fhir.validation.ValidationResult;
+import com.couchbase.client.java.json.JsonObject;
 import com.couchbase.client.java.search.SearchQuery;
 import com.couchbase.fhir.resources.config.TenantContextHolder;
+import com.couchbase.fhir.resources.model.VersionedResource;
 import com.couchbase.fhir.resources.repository.FhirResourceDaoImpl;
 import com.couchbase.fhir.resources.service.FhirAuditService;
 import com.couchbase.fhir.resources.service.UserAuditInfo;
 import com.couchbase.fhir.resources.service.FhirBucketConfigService;
 
 import com.couchbase.fhir.resources.util.*;
+import com.couchbase.fhir.search.model.TokenParam;
 import com.couchbase.fhir.resources.util.Ftsn1qlQueryBuilder.SortField;
 import com.couchbase.fhir.resources.search.validation.FhirSearchParameterPreprocessor;
 import com.couchbase.fhir.resources.search.validation.FhirSearchValidationException;
 import com.couchbase.fhir.resources.validation.FhirBucketValidator;
 import com.couchbase.fhir.resources.validation.FhirBucketValidationException;
 import com.couchbase.fhir.validation.ValidationUtil;
+import org.hl7.fhir.instance.model.api.IBaseResource;
+import org.hl7.fhir.instance.model.api.IIdType;
 import org.hl7.fhir.r4.model.*;
 import ca.uhn.fhir.rest.api.RestSearchParameterTypeEnum;
-import ca.uhn.fhir.rest.api.SummaryEnum;
-import ca.uhn.fhir.parser.IParser;
-import ca.uhn.fhir.validation.FhirValidator;
-import ca.uhn.fhir.validation.ValidationResult;
-import ca.uhn.fhir.rest.annotation.Operation;
-import ca.uhn.fhir.rest.annotation.ResourceParam;
 
 import java.io.IOException;
 import java.util.*;
@@ -75,24 +79,28 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
     }
 
     @Read
-    public T read(@IdParam IdType theId) {
+    public IBaseResource read(@IdParam IdType theId, RequestDetails requestDetails) {
+        String summaryParam = requestDetails.getParameters().get("_summary") != null
+                ? requestDetails.getParameters().get("_summary")[0]
+                : null;
         String bucketName = TenantContextHolder.getTenantId();
-        
+
         // Validate FHIR bucket before proceeding
         try {
             bucketValidator.validateFhirBucketOrThrow(bucketName, "default");
         } catch (FhirBucketValidationException e) {
             throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(e.getMessage());
         }
-        
-        return dao.read(resourceClass.getSimpleName(), theId.getIdPart() , bucketName).orElseThrow(() ->
-                new ResourceNotFoundException(theId));
+
+        JsonObject jsonObject =  dao.read(resourceClass.getSimpleName(), theId.getIdPart() , bucketName);
+        return SummaryHelper.applySummary(jsonObject, summaryParam , fhirContext);
+
     }
 
     @Create
     public MethodOutcome create(@ResourceParam T resource) throws IOException {
         String bucketName = TenantContextHolder.getTenantId();
-        
+
         // Validate FHIR bucket before proceeding
         try {
             bucketValidator.validateFhirBucketOrThrow(bucketName, "default");
@@ -109,7 +117,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
 
         FhirAuditService auditService = new FhirAuditService();
         UserAuditInfo auditInfo = auditService.getCurrentUserAuditInfo();
-        auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE");
+        auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE" , "1");
 
         // Add US Core profile for strict validation buckets
         if (resource instanceof DomainResource && bucketConfig.isEnforceUSCore()) {
@@ -192,7 +200,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         List<SearchQuery> ftsQueries = new ArrayList<>();
         List<String> revIncludes = new ArrayList<>();
         Map<String, String[]> rawParams = requestDetails.getParameters();
-        
+
         // Convert to Map<String, List<String>> for validation
         Map<String, List<String>> allParams = rawParams.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue().length > 0)
@@ -200,24 +208,24 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                         Map.Entry::getKey,
                         e -> Arrays.asList(e.getValue())
                 ));
-        
+
         String resourceType = resourceClass.getSimpleName();
         String bucketName = TenantContextHolder.getTenantId();
-        
+
         // STEP 0: Validate that this is a FHIR bucket before proceeding
         try {
             bucketValidator.validateFhirBucketOrThrow(bucketName, "default");
         } catch (FhirBucketValidationException e) {
             throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(e.getMessage());
         }
-        
+
         // STEP 1: Validate search parameters BEFORE query execution
         try {
             searchPreprocessor.validateSearchParameters(resourceType, allParams);
         } catch (FhirSearchValidationException e) {
             throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(e.getUserFriendlyMessage());
         }
-        
+
         // Flatten to Map<String, String> for existing logic
         Map<String, String> searchParams = rawParams.entrySet().stream()
                 .filter(e -> e.getValue() != null && e.getValue().length > 0)
@@ -232,7 +240,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         int count = parseCountParameter(searchParams);
         List<SortField> sortFields = parseSortParameter(searchParams);
         String totalMode = parseTotalParameter(searchParams);
-        
+
         // Remove these parameters from the search params so they don't interfere with FTS queries
         searchParams.remove("_summary");
         searchParams.remove("_elements");
@@ -264,18 +272,17 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                 if (searchParam == null) continue;
 
                 if (searchParam.getParamType() == RestSearchParameterTypeEnum.TOKEN) {
-                    //filters.add(TokenSearchHelper.buildTokenWhereClause(fhirContext, resourceType, fhirParamName, value));
+                    new TokenParam(value);
                     ftsQueries.add(TokenSearchHelperFTS.buildTokenFTSQuery(fhirContext, resourceType, fhirParamName, value));
-                 }else if(searchParam.getParamType() == RestSearchParameterTypeEnum.STRING){
+                }else if(searchParam.getParamType() == RestSearchParameterTypeEnum.STRING){
+                    new StringParam(value);
                     ftsQueries.add(StringSearchHelperFTS.buildStringFTSQuery(fhirContext, resourceType, fhirParamName, value, searchParam , modifier));
                 }else if(searchParam.getParamType() == RestSearchParameterTypeEnum.DATE){
-                    //String dateClause = DateSearchHelper.buildDateCondition(fhirContext , resourceType , fhirParamName , value);
-
+                    new DateParam(value);
                     ftsQueries.add(DateSearchHelperFTS.buildDateFTS(fhirContext, resourceType, fhirParamName, value));
 
                 }else if(searchParam.getParamType() == RestSearchParameterTypeEnum.REFERENCE){
-                    String referenceClause = ReferenceSearchHelper.buildReferenceWhereCluse(fhirContext , resourceType , fhirParamName , value , searchParam);
-                    filters.add(referenceClause);
+                    ftsQueries.add(ReferenceSearchHelper.buildReferenceFtsCluse(fhirContext , resourceType , fhirParamName , value , searchParam));
                 }
             }
         }
@@ -296,10 +303,30 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
 
         List<T> results = dao.search(resourceType, query);
 
+        //Handle  _revinclude queries, add it to the result
+        //TODO - Refactor for pagination - as 2nd page shouldn't include original source result (e.g. Patient)
+        if(!revIncludes.isEmpty()){
+            List<String> resourceIds = results.stream()
+                    .map(r -> ((IBaseResource) r).getIdElement().toUnqualifiedVersionless().getValue())
+                    .collect(Collectors.toList());
+
+            SearchQuery revSearchQuery = RevIncludeHelperFTS.buildRevIncludeFTSQuery(revIncludes , resourceIds);
+
+            String revInclude = revIncludes.get(0);
+            String[] revParts = revInclude.split(":");
+            String sourceResource = revParts[0];
+            String revQuery = ftsn1qlQueryBuilder.build(Collections.singletonList(revSearchQuery), mustNotQueries, sourceResource, 0, count, sortFields);
+            List<T> revResults = dao.search(sourceResource, revQuery);
+            results.addAll(revResults);
+
+        }
+
         // Construct a FHIR Bundle response with _summary and _elements support
+
+        // Construct a FHIR Bundle response
         Bundle bundle = new Bundle();
         bundle.setType(Bundle.BundleType.SEARCHSET);
-        
+
         // Set accurate total count if requested
         if ("accurate".equals(totalMode)) {
             int accurateTotal = getAccurateCount(ftsQueries, mustNotQueries, resourceType, bucketName);
@@ -313,16 +340,62 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
             T filteredResource = applyResourceFiltering(resource, summaryMode, elements);
             bundle.addEntry()
                     .setResource(filteredResource)
-                    .setFullUrl(resourceType + "/" + filteredResource.getIdElement().getIdPart());
+                    .setFullUrl(filteredResource.getResourceType() + "/" + filteredResource.getIdElement().getIdPart());
         }
 
         return bundle;
     }
 
 
+    @Delete
+    public MethodOutcome delete(@IdParam IIdType theId, RequestDetails requestDetails) {
 
+        String bucketName = TenantContextHolder.getTenantId();
 
+        // STEP 0: Validate that this is a FHIR bucket before proceeding
+        try {
+            bucketValidator.validateFhirBucketOrThrow(bucketName, "default");
+        } catch (FhirBucketValidationException e) {
+            throw new ca.uhn.fhir.rest.server.exceptions.InvalidRequestException(e.getMessage());
+        }
 
+        //STEP 1: Fetch Current resource
+        JsonObject current = dao.read(resourceClass.getSimpleName(), theId.getIdPart(), bucketName);
+
+        if (current == null) {
+            throw new ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException(theId);
+        }
+
+        //STEP 2: Check if it is deleted
+        boolean isDeleted = current.containsKey("deleted") && current.getBoolean("deleted");
+        if (isDeleted) {
+            throw new ca.uhn.fhir.rest.server.exceptions.PreconditionFailedException(
+                    resourceClass.getSimpleName() + "/" + theId.getIdPart() + " is already deleted"
+            );
+        }
+
+        VersionedResource  versionedResource = FhirVersioningUtil.getVersionedResource(current , resourceClass.getSimpleName(), theId.getIdPart() , "DELETE" , fhirContext);
+
+        boolean deleted = dao.upsert(resourceClass.getSimpleName() , versionedResource , bucketName);
+
+        MethodOutcome outcome = new MethodOutcome();
+        if (deleted) {
+            OperationOutcome outcomeResource = new OperationOutcome();
+
+            OperationOutcome.OperationOutcomeIssueComponent issue =
+                    new OperationOutcome.OperationOutcomeIssueComponent()
+                            .setSeverity(OperationOutcome.IssueSeverity.INFORMATION)
+                            .setCode(OperationOutcome.IssueType.INFORMATIONAL) // required field
+                            .setDiagnostics("Resource "+ theId.getIdPart()+" is deleted successfully");
+
+            outcomeResource.addIssue(issue);
+            outcome.setOperationOutcome(outcomeResource);
+        } else {
+            throw new ResourceNotFoundException(theId);
+        }
+        return outcome;
+
+    }
 
 
     /**
@@ -334,25 +407,25 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         try {
             // Create a FHIR validator
             FhirValidator validator = fhirContext.newValidator();
-            
+
             // Validate the resource
             ValidationResult result = validator.validateWithResult(resource);
-            
+
             // Create OperationOutcome based on validation result
             OperationOutcome outcome = new OperationOutcome();
-            
+
             if (result.isSuccessful()) {
                 // Validation passed
                 outcome.addIssue()
-                    .setSeverity(OperationOutcome.IssueSeverity.INFORMATION)
-                    .setCode(OperationOutcome.IssueType.INFORMATIONAL)
-                    .setDiagnostics("Resource validation successful");
-                    
+                        .setSeverity(OperationOutcome.IssueSeverity.INFORMATION)
+                        .setCode(OperationOutcome.IssueType.INFORMATIONAL)
+                        .setDiagnostics("Resource validation successful");
+
             } else {
                 // Validation failed - add all issues
                 for (var issue : result.getMessages()) {
                     OperationOutcome.OperationOutcomeIssueComponent outcomeIssue = outcome.addIssue();
-                    
+
                     // Map severity
                     switch (issue.getSeverity()) {
                         case ERROR:
@@ -367,28 +440,28 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                         default:
                             outcomeIssue.setSeverity(OperationOutcome.IssueSeverity.ERROR);
                     }
-                    
+
                     // Set issue type and message
                     outcomeIssue.setCode(OperationOutcome.IssueType.INVALID);
                     outcomeIssue.setDiagnostics(issue.getMessage());
-                    
+
                     // Add location if available
                     if (issue.getLocationString() != null) {
                         outcomeIssue.addLocation(issue.getLocationString());
                     }
                 }
             }
-            
+
             return outcome;
-            
+
         } catch (Exception e) {
             // Handle validation errors
             OperationOutcome errorOutcome = new OperationOutcome();
             errorOutcome.addIssue()
-                .setSeverity(OperationOutcome.IssueSeverity.ERROR)
-                .setCode(OperationOutcome.IssueType.EXCEPTION)
-                .setDiagnostics("Validation failed: " + e.getMessage());
-            
+                    .setSeverity(OperationOutcome.IssueSeverity.ERROR)
+                    .setCode(OperationOutcome.IssueType.EXCEPTION)
+                    .setDiagnostics("Validation failed: " + e.getMessage());
+
             return errorOutcome;
         }
     }
@@ -398,8 +471,9 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         return resourceClass;
     }
 
+
     // ========== _summary and _elements Support Methods ==========
-    
+
     /**
      * Parse _summary parameter from search parameters (FHIR standard)
      */
@@ -408,7 +482,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (summaryValue == null || summaryValue.isEmpty()) {
             return null;
         }
-        
+
         try {
             switch (summaryValue.toLowerCase()) {
                 case "true":
@@ -428,7 +502,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
             return SummaryEnum.FALSE;
         }
     }
-    
+
     /**
      * Parse _elements parameter from search parameters (FHIR standard)
      */
@@ -437,25 +511,25 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (elementsValue == null || elementsValue.isEmpty()) {
             return null;
         }
-        
+
         try {
             Set<String> elements = new HashSet<>();
             String[] elementArray = elementsValue.split(",");
-            
+
             for (String element : elementArray) {
                 String trimmedElement = element.trim();
                 if (!trimmedElement.isEmpty() && !trimmedElement.equals("*")) {
                     elements.add(trimmedElement);
                 }
             }
-            
+
             return elements.isEmpty() ? null : elements;
-            
+
         } catch (Exception e) {
             return null;
         }
     }
-    
+
     /**
      * Parse _count parameter from search parameters (FHIR standard)
      * Default is 20, maximum is 100 for performance
@@ -465,7 +539,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (countValue == null || countValue.isEmpty()) {
             return 20; // Default count reduced from 50 to 20
         }
-        
+
         try {
             int count = Integer.parseInt(countValue);
             // Limit to reasonable bounds
@@ -476,7 +550,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
             return 20; // Default on parse error
         }
     }
-    
+
     /**
      * Parse _sort parameter from search parameters (FHIR standard)
      * Supports: _sort=field (ascending), _sort=-field (descending), _sort=field1,field2,-field3
@@ -487,31 +561,31 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (sortValue == null || sortValue.isEmpty()) {
             return new ArrayList<>();
         }
-        
+
         List<SortField> sortFields = new ArrayList<>();
         String[] fields = sortValue.split(",");
-        
+
         for (String field : fields) {
             field = field.trim();
             if (field.isEmpty()) continue;
-            
+
             // Check for descending order prefix
             boolean isDescending = field.startsWith("-");
             String fieldName = isDescending ? field.substring(1).trim() : field;
-            
+
             // Only allow alphanumeric, dots, and underscores for security
             if (!fieldName.matches("^[a-zA-Z0-9._]+$")) {
                 continue; // Skip invalid sort field
             }
-            
+
             // Map FHIR field names to proper FTS paths
             String mappedField = mapFhirFieldToFtsPath(fieldName, resourceClass.getSimpleName());
             sortFields.add(new SortField(mappedField, isDescending));
         }
-        
-                return sortFields;
+
+        return sortFields;
     }
-    
+
     /**
      * Parse _total parameter from search parameters (FHIR standard)
      * Supports: _total=none (default), _total=estimate, _total=accurate
@@ -521,7 +595,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (totalValue == null || totalValue.isEmpty()) {
             return "none"; // Default
         }
-        
+
         switch (totalValue.toLowerCase()) {
             case "none":
             case "estimate":
@@ -531,35 +605,35 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                 return "none"; // Invalid value defaults to none
         }
     }
-    
+
     /**
      * Handle count-only queries (_total=accurate with _count=0)
      */
-    private Bundle handleCountOnlyQuery(List<SearchQuery> ftsQueries, List<SearchQuery> mustNotQueries, 
-                                       String resourceType, String bucketName) {
+    private Bundle handleCountOnlyQuery(List<SearchQuery> ftsQueries, List<SearchQuery> mustNotQueries,
+                                        String resourceType, String bucketName) {
         int totalCount = getAccurateCount(ftsQueries, mustNotQueries, resourceType, bucketName);
-        
+
         Bundle bundle = new Bundle();
         bundle.setType(Bundle.BundleType.SEARCHSET);
         bundle.setTotal(totalCount);
         // No entries - just the count
-        
+
         return bundle;
     }
-    
+
     /**
      * Get accurate count using FTS COUNT query
      */
-    private int getAccurateCount(List<SearchQuery> ftsQueries, List<SearchQuery> mustNotQueries, 
-                                String resourceType, String bucketName) {
+    private int getAccurateCount(List<SearchQuery> ftsQueries, List<SearchQuery> mustNotQueries,
+                                 String resourceType, String bucketName) {
         try {
             Ftsn1qlQueryBuilder ftsn1qlQueryBuilder = new Ftsn1qlQueryBuilder();
             String countQuery = ftsn1qlQueryBuilder.buildCountQuery(ftsQueries, mustNotQueries, resourceType);
-            
+
             // Execute count query via DAO
             int count = dao.getCount(resourceType, countQuery);
             return count;
-            
+
         } catch (Exception e) {
             // Fallback to estimated count or 0
             return 0;
@@ -583,7 +657,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                     default: break;
                 }
                 break;
-                
+
             case "Observation":
                 switch (fhirField) {
                     case "date": return "effectiveDateTime";
@@ -592,7 +666,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                     default: break;
                 }
                 break;
-                
+
             case "Encounter":
                 switch (fhirField) {
                     case "date": return "period.start";
@@ -601,10 +675,10 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                     default: break;
                 }
                 break;
-                
+
             // Add more resource-specific mappings as needed
         }
-        
+
         // Handle common fields across all resources
         switch (fhirField) {
             case "_lastUpdated": return "meta.lastUpdated";
@@ -613,7 +687,7 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
             default: return fhirField; // Use as-is if no mapping found
         }
     }
-    
+
     /**
      * Apply resource filtering based on _summary and _elements parameters
      */
@@ -622,10 +696,10 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
         if (summaryMode == null && elements == null) {
             return resource; // No filtering needed
         }
-        
+
         try {
             IParser parser = fhirContext.newJsonParser();
-            
+
             // Apply summary mode
             if (summaryMode != null) {
                 switch (summaryMode) {
@@ -649,29 +723,29 @@ public class FhirCouchbaseResourceProvider <T extends Resource> implements IReso
                         break;
                 }
             }
-            
+
             // Apply elements filter
             if (elements != null && !elements.isEmpty()) {
                 Set<String> encodeElements = new HashSet<>();
-                
+
                 // Always include mandatory fields
                 encodeElements.add("id");
                 encodeElements.add("resourceType");
                 encodeElements.add("meta");
-                
+
                 // Add requested elements with resource type prefix (HAPI requirement)
                 String resourceType = resource.getClass().getSimpleName();
                 for (String element : elements) {
                     encodeElements.add(resourceType + "." + element);
                 }
-                
+
                 parser.setEncodeElements(encodeElements);
             }
-            
+
             // Serialize and deserialize to apply filtering
             String filteredJson = parser.encodeResourceToString(resource);
             return (T) parser.parseResource(resourceClass, filteredJson);
-            
+
         } catch (Exception e) {
             // If filtering fails, return original resource
             return resource;

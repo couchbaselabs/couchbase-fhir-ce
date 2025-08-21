@@ -114,7 +114,7 @@ public class FhirResourceStorageHelper {
             }
 
             // Add audit metadata using centralized service - preserves existing meta
-            auditService.addAuditInfoToMeta(fhirResource, auditService.getCurrentUserId(), operation);
+            auditService.addAuditInfoToMeta(fhirResource, auditService.getCurrentUserId(), operation , "1");
 
             // Construct document key: resourceType/id
             String documentKey = resourceType + "/" + resourceId;

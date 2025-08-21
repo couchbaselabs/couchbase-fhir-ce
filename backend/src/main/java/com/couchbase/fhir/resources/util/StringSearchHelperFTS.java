@@ -87,6 +87,6 @@ public class StringSearchHelperFTS {
     }
 
     private static boolean skipCommonIgnoredFields(String name) {
-        return name.equals("id") || name.equals("extension") || name.equals("period") || name.equals("use");
+        return name.equals("id") || name.equals("extension") || name.equals("period") || name.equals("use") || name.equals("text");
     }
 }

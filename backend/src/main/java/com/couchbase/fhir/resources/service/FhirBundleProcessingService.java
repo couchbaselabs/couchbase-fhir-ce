@@ -190,7 +190,7 @@ public class FhirBundleProcessingService {
                 }
 
                 // Step 2c: Add audit information
-                auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE");
+                auditService.addAuditInfoToMeta(resource, auditInfo, "CREATE" , "1");
 
                 // Step 2d: Prepare for insertion
                 String resourceId = resource.getIdElement().getIdPart();

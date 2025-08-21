@@ -2,12 +2,13 @@ package com.couchbase.fhir.resources.util;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.context.RuntimeSearchParam;
+import com.couchbase.client.java.search.SearchQuery;
 
 import java.util.Set;
 
 public class ReferenceSearchHelper {
 
-    public static String buildReferenceWhereCluse(FhirContext fhirContext , String resourceType, String paramName, String value  , RuntimeSearchParam searchParam){
+    public static SearchQuery buildReferenceFtsCluse(FhirContext fhirContext , String resourceType, String paramName, String value  , RuntimeSearchParam searchParam){
         String path = searchParam.getPath();
         String jsonPath = toCouchbasePath(path, resourceType);
 
@@ -25,7 +26,8 @@ public class ReferenceSearchHelper {
                 );
             }
         }
-        return jsonPath + ".reference = \"" + value + "\"";
+        return SearchQuery.match(value).field(jsonPath + ".reference");
+
     }
 
 
