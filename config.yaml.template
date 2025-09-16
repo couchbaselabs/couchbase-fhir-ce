@@ -49,6 +49,12 @@ aws:
   secret-access-key: ""
   region: ""
 
+# Super User Credentials - These are seeded into the auth db
+admin:
+  email: ""
+  password: ""
+  name: "" #optional
+
 fhir:
   profile: "US Core"
   endpoint: "/fhir"

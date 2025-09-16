@@ -45,6 +45,16 @@ services:
       - fhir-server
     restart: unless-stopped
 
+  auth-server:
+    build:
+      context: ./auth
+    environment:
+      - BETTER_AUTH_URL=http://localhost
+    volumes:
+      - auth_db_data:/app/db
+      - ./config.yaml:/app/config.yaml
+    restart: unless-stopped
+
   haproxy:
     image: haproxy:2.9-alpine
     user: root
@@ -62,3 +72,4 @@ services:
 volumes:
   couchbase_data: {}
   haproxy_socket: {}
+  auth_db_data: {}
