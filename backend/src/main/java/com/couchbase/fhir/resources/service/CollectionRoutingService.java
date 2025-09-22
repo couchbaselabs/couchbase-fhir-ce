@@ -1,11 +1,15 @@
 package com.couchbase.fhir.resources.service;
 
+import ca.uhn.fhir.rest.param.DateParam;
 import com.couchbase.common.config.FhirResourceMappingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
@@ -195,4 +199,35 @@ public class CollectionRoutingService {
             mappingService.getSupportedResourceTypes()
         );
     }
+
+    public String buildHistoryQuery(String bucketName, String resourceType, String id , DateParam since) {
+        String collection = "Versions"; // all history entries stored in version collection
+        StringBuilder query = new StringBuilder();
+        query.append("SELECT v.* ")
+                .append("FROM `").append(bucketName).append("`.`").append(DEFAULT_SCOPE).append("`.`").append(collection).append("` v ")
+                .append("WHERE v.resourceType = '").append(resourceType).append("' ")
+                .append("AND v.id = '").append(id).append("' ");
+
+        if (since != null && since.getValue() != null) {
+            Instant sinceInstant = since.getValue().toInstant();
+            String isoSince = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC).format(sinceInstant);
+            query.append("AND v.meta.lastUpdated >= '").append(isoSince).append("' ");
+        }
+
+        query.append("ORDER BY v.meta.lastUpdated ASC");
+        return query.toString();
+    }
+
+    public String buildReadVersionQuery(String bucketName, String resourceType,String id , String versionId) {
+        String collection = "Versions";
+        String documentKey = resourceType +"/"+ id + "/" + versionId;
+
+        return String.format(
+                "SELECT c.* " +
+                        "FROM `%s`.`%s`.`%s` c " +
+                        "USE KEYS '%s'",
+                bucketName, DEFAULT_SCOPE, collection, documentKey
+        );
+    }
+
 }
