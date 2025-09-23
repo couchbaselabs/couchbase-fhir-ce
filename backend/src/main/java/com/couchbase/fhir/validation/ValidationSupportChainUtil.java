@@ -22,7 +22,7 @@ public class ValidationSupportChainUtil {
 
         try {
             // Load all JSON files from us_core folder
-            Resource[] resources = resolver.getResources("classpath:us_core_6.1.0/*.json");
+            Resource[] resources = resolver.getResources("classpath*:us_core_6.1.0/*.json");
 
             for (Resource res : resources) {
                 try (InputStream stream = res.getInputStream()) {

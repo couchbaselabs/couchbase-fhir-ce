@@ -9,6 +9,8 @@ WORKDIR /app
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/target/*.jar app.jar
+RUN mkdir -p src/main/resources
+COPY --from=builder /app/src/main/resources/* src/main/resources
 USER appuser
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]

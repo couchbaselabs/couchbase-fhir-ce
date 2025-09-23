@@ -38,7 +38,7 @@ import java.nio.file.Paths;
 public class FtsIndexCreator {
     
     private static final Logger logger = LoggerFactory.getLogger(FtsIndexCreator.class);
-    private static final String FTS_INDEXES_PATH = "classpath:fts-indexes/*.json";
+    private static final String FTS_INDEXES_PATH = "classpath*:fts-indexes/*.json";
     private final ObjectMapper objectMapper = new ObjectMapper();
     
     @Autowired

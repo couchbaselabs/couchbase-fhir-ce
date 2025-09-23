@@ -9,6 +9,24 @@ version: "3.8"
 #################################################################
 
 services:
+
+  couchbase:
+    image: couchbase:community-7.2.4
+    container_name: couchbase-server
+    ports:
+      - "8091-8096:8091-8096"
+      - "11210:11210"           
+    environment:
+      - COUCHBASE_ADMINISTRATOR_USERNAME=Administrator
+      - COUCHBASE_ADMINISTRATOR_PASSWORD=password
+    volumes:
+      - couchbase_data:/opt/couchbase/var
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/ui/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   fhir-server:
     build:
       context: ./backend
@@ -20,7 +38,11 @@ services:
       - "8080" # internal only; not published to host
     volumes:
       - ./config.yaml:/config.yaml:ro
+    depends_on:
+      - couchbase
     restart: unless-stopped
+
+
   fhir-admin:
     build:
       context: ./frontend
