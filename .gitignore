@@ -71,6 +71,27 @@ config.yaml
 config*.yaml
 *.config.yaml
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
 # Copilot Instructions
 copilot-instructions.md
 k8s-deployment-plan.md

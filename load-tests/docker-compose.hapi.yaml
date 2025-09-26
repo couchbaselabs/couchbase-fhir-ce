@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:14
+    container_name: hapi-postgres
+    environment:
+      POSTGRES_DB: hapi
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d hapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  fhir:
+    image: hapiproject/hapi:v6.0.1
+    container_name: hapi-fhir
+    environment:
+      - spring.datasource.maxActive=4
+      - hapi.fhir.subscription.resthook_enabled=true
+      - spring.datasource.max-active=10
+      - hapi.fhir.client_id_strategy=ANY
+      - hapi.fhir.subscription.websocket_enabled=true
+      - mdm_enabled=true
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+
