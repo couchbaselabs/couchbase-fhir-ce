@@ -11,18 +11,23 @@ cp config.yaml.template config.yaml
 ```
 Edit `config.yaml` as needed for your environment.
 
-## 2. Set the Docker Socket Mount
+~~## 2. Set the Docker Socket Mount~~
 
-The backend service (`fhir-server`) needs access to the Docker socket. The correct socket path may vary depending on your Docker context. Use the provided script to automatically detect and update the mount:
+~~The backend service (`fhir-server`) needs access to the Docker socket. The correct socket path may vary depending on your Docker context. Use the provided script to automatically detect and update the mount:~~
 
 ```bash
-./init-docker-compose.sh
+❌ ./init-docker-compose.sh
 ```
-This will update `docker-compose.yaml` to mount the correct Docker socket into the `fhir-server` container.
+~~This will update `docker-compose.yaml` to mount the correct Docker socket into the `fhir-server` container.~~
 
 ## 3. Build and Run the Containers
 
 Build all services:
+
+> **Important**: For running locally, use the `docker-compose.local.yaml` file explicitly. <br/>
+> Explicitly pass the file using the -f flag for all commands listed below <br>
+> e.g.   `docker compose -f docker-compose.local.yaml up|down|build`
+
 
 ```bash
 docker compose build
@@ -47,6 +52,13 @@ docker compose down
 ```
 
 To stop and remove all services, networks, and named volumes (including data):
+
+> Warning❗: If you run this command, all the data, including the data in the local couchbase cluster will be deleted. <br/>
+> Before running the server again, you'll have to initialize the couchbase cluster and create buckets
+
+<br/>
+
+
 
 ```bash
 docker compose down -v
@@ -76,7 +88,7 @@ When running Couchbase Server for the first time, you need to initialize the clu
    - Walk through the setup wizard.
    - Set the **username** and **password** for the administrator account when prompted. (Remember these credentials; you will need them to access and manage Couchbase.)
    - Accept the default values or adjust settings as needed for your environment.
-   - Optionally, enable the `beer-sample` bucket to load sample data.
+   - create a bucket named `fhir`
 
 For more details, see the [Couchbase Docker documentation](https://hub.docker.com/_/couchbase) and [official setup guide](https://docs.couchbase.com/server/current/install/getting-started-docker.html).
 

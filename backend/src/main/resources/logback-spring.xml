@@ -21,8 +21,8 @@
     <logger name="com.couchbase.tracing" level="ERROR"/>
 
     <!-- Package-specific loggers -->
-    <logger name="com.couchbase.admin" level="ERROR"/>
-    <logger name="com.couchbase.fhir" level="ERROR"/>
+    <logger name="com.couchbase.admin" level="INFO"/>
+    <logger name="com.couchbase.fhir" level="INFO"/>
     <logger name="com.couchbase.common" level="ERROR"/>
 
     <!-- Suppress noisy HAPI FHIR parser warnings -->

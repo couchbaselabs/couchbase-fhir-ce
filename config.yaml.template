@@ -69,6 +69,21 @@ logging:
 #   secret-access-key: ""
 #   region: ""
 
+# Super User Credentials - These are seeded into the auth db
+admin:
+  email: ""
+  password: ""
+  name: "" #optional
+
+fhir:
+  profile: "US Core"
+  endpoint: "/fhir"
+  version: "V4"
+
+app:
+  autoConnect: true
+  showConnectionDialog: false # Set to false to prevent dialog if YAML config is valid
+
 # HAProxy Metrics Configuration
 haproxy:
   metrics:

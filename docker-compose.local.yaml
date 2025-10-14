@@ -1,3 +1,5 @@
+version: "3.8"
+
 #################################################################
 # Minimal beta stack: backend (fhir-server), frontend (fhir-admin), haproxy
 # - No Couchbase in this compose (assumes backend can start without DB or uses in‑memory / external)
@@ -7,6 +9,25 @@
 #################################################################
 
 services:
+
+  couchbase:
+    # image: couchbase:community-7.2.4
+    image: couchbase:7.6.7
+    container_name: couchbase-server
+    ports:
+      - "8091-8096:8091-8096"
+      - "11210:11210"           
+    environment:
+      - COUCHBASE_ADMINISTRATOR_USERNAME=Administrator
+      - COUCHBASE_ADMINISTRATOR_PASSWORD=password
+    volumes:
+      - couchbase_data:/opt/couchbase/var
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/ui/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   fhir-server:
     build:
       context: ./backend
@@ -14,11 +35,16 @@ services:
       - SPRING_PROFILES_ACTIVE=prod
       - JAVA_OPTS=-Xms256m -Xmx1024m
       - DEPLOYED_ENV=container
+      # - LOCAL_ENV=true
     expose:
       - "8080" # internal only; not published to host
     volumes:
       - ./config.yaml:/config.yaml:ro
+    # depends_on:
+    #   - couchbase
     restart: unless-stopped
+
+
   fhir-admin:
     build:
       context: ./frontend
