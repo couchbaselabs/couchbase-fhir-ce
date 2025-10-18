@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 fake = Faker()
 
@@ -50,7 +51,7 @@ def create_subjective_refraction_form_with_fake_data(client,  patient_id: Any, e
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-subj"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -79,7 +80,7 @@ def create_subjective_refraction_form_with_fake_data(client,  patient_id: Any, e
       "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SUBJ}]},
       "bodySite": {"text": side},
     }
-    fu1 = f"urn:uuid:obs-subj-ucva-{side}"
+    fu1 = f"urn:uuid:{uuid.uuid4()}"
     obs_fus.append(fu1)
     entries.append({"fullUrl": fu1, "resource": o1, "request": {"method": "POST", "url": "Observation"}})
 
@@ -96,23 +97,26 @@ def create_subjective_refraction_form_with_fake_data(client,  patient_id: Any, e
       "derivedFrom": [{"reference": qr_fu}],
       "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SUBJ}]},
       "bodySite": {"text": side},
-      "hasMember": [
-        {"reference": f"urn:uuid:obs-lens-dv-{side}-sphere"},
-        {"reference": f"urn:uuid:obs-lens-dv-{side}-cylinder"},
-        {"reference": f"urn:uuid:obs-lens-dv-{side}-axis"},
-      ],
     }
-    fu2 = f"urn:uuid:obs-subj-bcva-dv-{side}"
+    # Generate UUIDs for lens components
+    lens_dv_sphere_id = f"urn:uuid:{uuid.uuid4()}"
+    lens_dv_cylinder_id = f"urn:uuid:{uuid.uuid4()}"
+    lens_dv_axis_id = f"urn:uuid:{uuid.uuid4()}"
+    o2["hasMember"] = [
+      {"reference": lens_dv_sphere_id},
+      {"reference": lens_dv_cylinder_id},
+      {"reference": lens_dv_axis_id},
+    ]
+    fu2 = f"urn:uuid:{uuid.uuid4()}"
     obs_fus.append(fu2)
     entries.append({"fullUrl": fu2, "resource": o2, "request": {"method": "POST", "url": "Observation"}})
     # lens components as Observations
     lens_specs = [
-      ("sphere", sph, "D"),
-      ("cylinder", cyl, "D"),
-      ("axis", axis, "deg"),
+      ("sphere", sph, "D", lens_dv_sphere_id),
+      ("cylinder", cyl, "D", lens_dv_cylinder_id),
+      ("axis", axis, "deg", lens_dv_axis_id),
     ]
-    for label, value, unit in lens_specs:
-      lid = f"urn:uuid:obs-lens-dv-{side}-{label}"
+    for label, value, unit, lid in lens_specs:
       lo = {
         "resourceType": "Observation",
         "status": "final",
@@ -139,24 +143,28 @@ def create_subjective_refraction_form_with_fake_data(client,  patient_id: Any, e
       "derivedFrom": [{"reference": qr_fu}],
       "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SUBJ}]},
       "bodySite": {"text": side},
-      "hasMember": [
-        {"reference": f"urn:uuid:obs-lens-nv-{side}-sphere"},
-        {"reference": f"urn:uuid:obs-lens-nv-{side}-cylinder"},
-        {"reference": f"urn:uuid:obs-lens-nv-{side}-axis"},
-        {"reference": f"urn:uuid:obs-lens-nv-{side}-add"},
-      ],
     }
-    fu3 = f"urn:uuid:obs-subj-bcva-nv-{side}"
+    # Generate UUIDs for NV lens components
+    lens_nv_sphere_id = f"urn:uuid:{uuid.uuid4()}"
+    lens_nv_cylinder_id = f"urn:uuid:{uuid.uuid4()}"
+    lens_nv_axis_id = f"urn:uuid:{uuid.uuid4()}"
+    lens_nv_add_id = f"urn:uuid:{uuid.uuid4()}"
+    o3["hasMember"] = [
+      {"reference": lens_nv_sphere_id},
+      {"reference": lens_nv_cylinder_id},
+      {"reference": lens_nv_axis_id},
+      {"reference": lens_nv_add_id},
+    ]
+    fu3 = f"urn:uuid:{uuid.uuid4()}"
     obs_fus.append(fu3)
     entries.append({"fullUrl": fu3, "resource": o3, "request": {"method": "POST", "url": "Observation"}})
     lens_specs_nv = [
-      ("sphere", total, "D"),
-      ("cylinder", cyl, "D"),
-      ("axis", axis, "deg"),
-      ("add", add, "D"),
+      ("sphere", total, "D", lens_nv_sphere_id),
+      ("cylinder", cyl, "D", lens_nv_cylinder_id),
+      ("axis", axis, "deg", lens_nv_axis_id),
+      ("add", add, "D", lens_nv_add_id),
     ]
-    for label, value, unit in lens_specs_nv:
-      lid = f"urn:uuid:obs-lens-nv-{side}-{label}"
+    for label, value, unit, lid in lens_specs_nv:
       lo = {
         "resourceType": "Observation",
         "status": "final",
@@ -183,7 +191,7 @@ def create_subjective_refraction_form_with_fake_data(client,  patient_id: Any, e
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SUBJ}]},
     "entry": ([{"item": {"reference": qr_fu}}] + [{"item": {"reference": fu}} for fu in obs_fus]),
   }
-  entries.append({"fullUrl": "urn:uuid:list-subj", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction subjective-refraction)")

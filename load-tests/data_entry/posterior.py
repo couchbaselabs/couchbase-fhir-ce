@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 fake = Faker()
 
@@ -68,7 +69,7 @@ def create_posterior_chamber_form_with_fake_data(client,  patient_id: Any, encou
 
   entries: List[Dict[str, Any]] = []
 
-  qr_fu = "urn:uuid:qr-posterior"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {"resourceType": "QuestionnaireResponse", "status": "completed", "subject": {"reference": f"Patient/{pid}"}, "encounter": {"reference": f"Encounter/{eid}"}, "authored": _now_iso(), "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_PC}]}}
   if performer_ref:
     qr["author"] = {"reference": performer_ref}
@@ -77,7 +78,7 @@ def create_posterior_chamber_form_with_fake_data(client,  patient_id: Any, encou
   obs_fus: List[str] = []
   for idx, s in enumerate(SYSTEMS):
     o = _obs(pid, eid, system_text=s["system_text"], system_code=s["system_code"], body_text=s["body_text"], body_code=s["body_code"], value_text=pick(), performer_ref=performer_ref, qr_full_url=qr_fu)
-    fu = f"urn:uuid:obs-pc-{idx}"
+    fu = f"urn:uuid:{uuid.uuid4()}"
     obs_fus.append(fu)
     entries.append({"fullUrl": fu, "resource": o, "request": {"method": "POST", "url": "Observation"}})
 
@@ -93,7 +94,7 @@ def create_posterior_chamber_form_with_fake_data(client,  patient_id: Any, encou
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_PC}]},
     "entry": ([{"item": {"reference": qr_fu}}] + [{"item": {"reference": fu}} for fu in obs_fus]),
   }
-  entries.append({"fullUrl": "urn:uuid:list-posterior", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction posterior)")

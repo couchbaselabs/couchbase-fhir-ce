@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 from faker import Faker
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 fake = Faker()
 
@@ -34,7 +35,7 @@ def create_history_form_with_fake_data(client,  patient_id: Any, encounter_id: A
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-history"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -48,7 +49,7 @@ def create_history_form_with_fake_data(client,  patient_id: Any, encounter_id: A
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # Procedure (past procedure)
-  proc_fu = "urn:uuid:proc-history"
+  proc_fu = f"urn:uuid:{uuid.uuid4()}"
   proc = {
     "resourceType": "Procedure",
     "status": "completed",
@@ -64,7 +65,7 @@ def create_history_form_with_fake_data(client,  patient_id: Any, encounter_id: A
   entries.append({"fullUrl": proc_fu, "resource": proc, "request": {"method": "POST", "url": "Procedure"}})
 
   # Condition (past diagnosis)
-  cond_fu = "urn:uuid:cond-history"
+  cond_fu = f"urn:uuid:{uuid.uuid4()}"
   cond = {
     "resourceType": "Condition",
     "clinicalStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active"}]},
@@ -92,7 +93,7 @@ def create_history_form_with_fake_data(client,  patient_id: Any, encounter_id: A
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_HISTORY}]},
     "entry": [{"item": {"reference": qr_fu}}, {"item": {"reference": proc_fu}}, {"item": {"reference": cond_fu}}],
   }
-  entries.append({"fullUrl": "urn:uuid:list-history", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction treatment-history)")

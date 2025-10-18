@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 from faker import Faker
 from datetime import datetime, timedelta, timezone
+import uuid
 
 
 fake = Faker()
@@ -89,7 +90,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   entries: list[dict] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-surg"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -103,7 +104,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # Procedure (report will reference DiagnosticReport created below)
-  proc_fu = "urn:uuid:proc-surg"
+  proc_fu = f"urn:uuid:{uuid.uuid4()}"
   proc = {
     "resourceType": "Procedure",
     "status": "completed",
@@ -123,7 +124,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   entries.append({"fullUrl": proc_fu, "resource": proc, "request": {"method": "POST", "url": "Procedure"}})
 
   # Device (implant)
-  dev_fu = "urn:uuid:dev-implant"
+  dev_fu = f"urn:uuid:{uuid.uuid4()}"
   device = {
     "resourceType": "Device",
     "status": "active",
@@ -135,7 +136,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   entries.append({"fullUrl": dev_fu, "resource": device, "request": {"method": "POST", "url": "Device"}})
 
   # Pre-op DiagnosticReport (simple text result)
-  dr_fu = "urn:uuid:dr-preop"
+  dr_fu = f"urn:uuid:{uuid.uuid4()}"
   dr = {
     "resourceType": "DiagnosticReport",
     "status": "final",
@@ -152,7 +153,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   proc["report"] = [{"reference": dr_fu}]
 
   # Condition (diagnosis)
-  cond_fu = "urn:uuid:cond-surg"
+  cond_fu = f"urn:uuid:{uuid.uuid4()}"
   cond = {
     "resourceType": "Condition",
     "clinicalStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active"}]},
@@ -165,7 +166,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
   entries.append({"fullUrl": cond_fu, "resource": cond, "request": {"method": "POST", "url": "Condition"}})
 
   # Discharge summary as Composition
-  comp_fu = "urn:uuid:comp-discharge"
+  comp_fu = f"urn:uuid:{uuid.uuid4()}"
   comp = {
     "resourceType": "Composition",
     "status": "final",
@@ -196,7 +197,7 @@ def create_surgical_notes_form_with_fake_data(client, patient_id: Any, encounter
       + [{"item": {"reference": x}} for x in [proc_fu, dev_fu, dr_fu, cond_fu, comp_fu]]
     ),
   }
-  entries.append({"fullUrl": "urn:uuid:list-surg", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction surgical-notes)")

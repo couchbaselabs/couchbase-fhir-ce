@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 
 fake = Faker()
@@ -66,7 +67,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-pgp"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -80,7 +81,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # VisionPrescription DV (notes/extensions for frame, lens type, PD, condition, duration)
-  vp_dv_fu = "urn:uuid:vp-pgp-dv"
+  vp_dv_fu = f"urn:uuid:{uuid.uuid4()}"
   vp_dv = {
     "resourceType": "VisionPrescription",
     "status": "active",
@@ -106,7 +107,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries.append({"fullUrl": vp_dv_fu, "resource": vp_dv, "request": {"method": "POST", "url": "VisionPrescription"}})
 
   # VisionPrescription NV
-  vp_nv_fu = "urn:uuid:vp-pgp-nv"
+  vp_nv_fu = f"urn:uuid:{uuid.uuid4()}"
   vp_nv = {
     "resourceType": "VisionPrescription",
     "status": "active",
@@ -156,7 +157,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   va_fus: List[str] = []
   for idx, (label, value, side) in enumerate(va_map):
     o = va_obs(f"{label}", str(value), side)
-    fu = f"urn:uuid:obs-pgp-va-{idx}"
+    fu = f"urn:uuid:{uuid.uuid4()}"
     va_fus.append(fu)
     entries.append({"fullUrl": fu, "resource": o, "request": {"method": "POST", "url": "Observation"}})
 
@@ -177,7 +178,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
       + [{"item": {"reference": fu}} for fu in va_fus]
     ),
   }
-  entries.append({"fullUrl": "urn:uuid:list-pgp", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction pgp)")

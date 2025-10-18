@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 
 fake = Faker()
@@ -51,7 +52,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-screening"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -65,7 +66,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # Vitals: Blood Pressure (components), SpO2, Pulse
-  bp_fu = "urn:uuid:obs-bp"
+  bp_fu = f"urn:uuid:{uuid.uuid4()}"
   bp = {
     "resourceType": "Observation",
     "status": "final",
@@ -82,7 +83,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   }
   entries.append({"fullUrl": bp_fu, "resource": bp, "request": {"method": "POST", "url": "Observation"}})
 
-  spo2_fu = "urn:uuid:obs-spo2"
+  spo2_fu = f"urn:uuid:{uuid.uuid4()}"
   spo2_obs = {
     "resourceType": "Observation",
     "status": "final",
@@ -96,7 +97,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   }
   entries.append({"fullUrl": spo2_fu, "resource": spo2_obs, "request": {"method": "POST", "url": "Observation"}})
 
-  pulse_fu = "urn:uuid:obs-pulse"
+  pulse_fu = f"urn:uuid:{uuid.uuid4()}"
   pulse_obs = {
     "resourceType": "Observation",
     "status": "final",
@@ -111,7 +112,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   entries.append({"fullUrl": pulse_fu, "resource": pulse_obs, "request": {"method": "POST", "url": "Observation"}})
 
   # Allergy
-  allergy_fu = "urn:uuid:allergy"
+  allergy_fu = f"urn:uuid:{uuid.uuid4()}"
   allergy = {
     "resourceType": "AllergyIntolerance",
     "clinicalStatus": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": ("active" if allergy_active else "inactive")}]},
@@ -142,12 +143,12 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
       "evidence": [{"detail": [{"reference": qr_fu}]}],
       "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SCREENING}]},
     }
-    fu = f"urn:uuid:cond-screening-{idx}"
+    fu = f"urn:uuid:{uuid.uuid4()}"
     cond_fus.append(fu)
     entries.append({"fullUrl": fu, "resource": c, "request": {"method": "POST", "url": "Condition"}})
 
   # Education as Communication
-  edu_fu = "urn:uuid:comm-edu"
+  edu_fu = f"urn:uuid:{uuid.uuid4()}"
   edu = {
     "resourceType": "Communication",
     "status": "completed",
@@ -163,7 +164,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   entries.append({"fullUrl": edu_fu, "resource": edu, "request": {"method": "POST", "url": "Communication"}})
 
   # Travel time & Occupation as Observations (social history)
-  travel_fu = "urn:uuid:obs-travel"
+  travel_fu = f"urn:uuid:{uuid.uuid4()}"
   travel = {
     "resourceType": "Observation",
     "status": "final",
@@ -177,7 +178,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   }
   entries.append({"fullUrl": travel_fu, "resource": travel, "request": {"method": "POST", "url": "Observation"}})
 
-  job_fu = "urn:uuid:obs-job"
+  job_fu = f"urn:uuid:{uuid.uuid4()}"
   job = {
     "resourceType": "Observation",
     "status": "final",
@@ -192,7 +193,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   entries.append({"fullUrl": job_fu, "resource": job, "request": {"method": "POST", "url": "Observation"}})
 
   # Lab screening observations
-  bs_fu = "urn:uuid:obs-blood-sugar"
+  bs_fu = f"urn:uuid:{uuid.uuid4()}"
   bs = {
     "resourceType": "Observation",
     "status": "final",
@@ -206,7 +207,7 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
   }
   entries.append({"fullUrl": bs_fu, "resource": bs, "request": {"method": "POST", "url": "Observation"}})
 
-  ecg_fu = "urn:uuid:obs-ecg"
+  ecg_fu = f"urn:uuid:{uuid.uuid4()}"
   ecg_obs = {
     "resourceType": "Observation",
     "status": "final",
@@ -233,10 +234,10 @@ def create_screening_form_with_fake_data(client,  patient_id: Any, encounter_id:
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_SCREENING}]},
     "entry": (
       [{"item": {"reference": qr_fu}}]
-      + [{"item": {"reference": x}} for x in [bp_fu, spo2_fu, pulse_fu, allergy_fu, travel_fu, job_fu, bs_fu, ecg_fu] + cond_fus]
+      + [{"item": {"reference": x}} for x in [bp_fu, spo2_fu, pulse_fu, allergy_fu, edu_fu, travel_fu, job_fu, bs_fu, ecg_fu] + cond_fus]
     ),
   }
-  entries.append({"fullUrl": "urn:uuid:list-screening", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction screening)")

@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 
 fake = Faker()
@@ -38,7 +39,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-lab"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -52,7 +53,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # Biochemistry Observation
-  obs_biochem_fu = "urn:uuid:obs-lab-bio"
+  obs_biochem_fu = f"urn:uuid:{uuid.uuid4()}"
   obs_biochem = {
     "resourceType": "Observation",
     "status": "final",
@@ -69,7 +70,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries.append({"fullUrl": obs_biochem_fu, "resource": obs_biochem, "request": {"method": "POST", "url": "Observation"}})
 
   # Serology Observation
-  obs_ser_fu = "urn:uuid:obs-lab-ser"
+  obs_ser_fu = f"urn:uuid:{uuid.uuid4()}"
   obs_ser = {
     "resourceType": "Observation",
     "status": "final",
@@ -86,7 +87,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
   entries.append({"fullUrl": obs_ser_fu, "resource": obs_ser, "request": {"method": "POST", "url": "Observation"}})
 
   # DiagnosticReport referencing both observations
-  dr_fu = "urn:uuid:dr-lab"
+  dr_fu = f"urn:uuid:{uuid.uuid4()}"
   dr = {
     "resourceType": "DiagnosticReport",
     "status": "final",
@@ -114,7 +115,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_LAB}]},
     "entry": [{"item": {"reference": qr_fu}}, {"item": {"reference": dr_fu}}, {"item": {"reference": obs_biochem_fu}}, {"item": {"reference": obs_ser_fu}}],
   }
-  entries.append({"fullUrl": "urn:uuid:list-lab", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction lab)")

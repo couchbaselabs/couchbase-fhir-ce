@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, List
 from faker import Faker
 from datetime import datetime, timezone
+import uuid
 
 fake = Faker()
 
@@ -49,7 +50,7 @@ def create_complaints_form_with_fake_data(client,  patient_id: Any, encounter_id
   entries: List[Dict[str, Any]] = []
 
   # 1) QuestionnaireResponse anchor
-  qr_full_url = "urn:uuid:qr-complaints"
+  qr_full_url = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -84,7 +85,7 @@ def create_complaints_form_with_fake_data(client,  patient_id: Any, encounter_id
       condition["bodySite"] = [_body_site_cc(bs_txt)]
     if performer_ref:
       condition["asserter"] = performer_ref
-    fu = f"urn:uuid:cond-complaint-{i}"
+    fu = f"urn:uuid:{uuid.uuid4()}"
     condition_full_urls.append(fu)
     entries.append({"fullUrl": fu, "resource": condition, "request": {"method": "POST", "url": "Condition"}})
 
@@ -102,7 +103,7 @@ def create_complaints_form_with_fake_data(client,  patient_id: Any, encounter_id
     "entry": ([{"item": {"reference": qr_full_url}}] + [{"item": {"reference": fu}} for fu in condition_full_urls]),
     "author": performer_ref,
   }
-  entries.append({"fullUrl": "urn:uuid:list-complaints", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction complaints)")

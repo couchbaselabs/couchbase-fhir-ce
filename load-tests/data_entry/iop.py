@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from faker import Faker
+import uuid
 
 
 fake = Faker()
@@ -145,6 +146,7 @@ def create_iop_form_with_fake_data(client, patient_id: str, encounter_id: str,us
   entries: List[Dict[str, Any]] = []
 
   # 1) QuestionnaireResponse (anchor)
+  qr_full_url = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -166,7 +168,7 @@ def create_iop_form_with_fake_data(client, patient_id: str, encounter_id: str,us
     obs = _iop_observation_template(pid, eid, eye, loinc_code, body_site, method_text)
     # link to QR
     obs["derivedFrom"] = [{"reference": qr_full_url}]
-    full_url = f"urn:uuid:obs-iop-{idx}"
+    full_url = f"urn:uuid:{uuid.uuid4()}"
     obs_full_urls.append(full_url)
     entries.append({
       "fullUrl": full_url,
@@ -180,7 +182,7 @@ def create_iop_form_with_fake_data(client, patient_id: str, encounter_id: str,us
     obs = _duct_observation_template(pid, eid, eye, body_site)
     obs["derivedFrom"] = [{"reference": qr_full_url}]
     entries.append({
-      "fullUrl": f"urn:uuid:obs-duct-{idx}",
+      "fullUrl": f"urn:uuid:{uuid.uuid4()}",
       "resource": obs,
       "request": {"method": "POST", "url": "Observation"},
       "author": performer_ref,
@@ -191,7 +193,7 @@ def create_iop_form_with_fake_data(client, patient_id: str, encounter_id: str,us
     obs = _cct_observation_template(pid, eid, eye, body_site, EXAM_CODE_GOLDMANN, EXAM_TEXT_GOLDMANN)
     obs["derivedFrom"] = [{"reference": qr_full_url}]
     entries.append({
-      "fullUrl": f"urn:uuid:obs-cct-{idx}",
+      "fullUrl": f"urn:uuid:{uuid.uuid4()}",
       "resource": obs,
       "request": {"method": "POST", "url": "Observation"},
       "author": performer_ref,
@@ -216,7 +218,7 @@ def create_iop_form_with_fake_data(client, patient_id: str, encounter_id: str,us
     "author": performer_ref,
     }
   entries.append({
-    "fullUrl": "urn:uuid:list-iop",
+    "fullUrl": f"urn:uuid:{uuid.uuid4()}",
     "resource": list_body,
     "request": {"method": "POST", "url": "List"},
   })

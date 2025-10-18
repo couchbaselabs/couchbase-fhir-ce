@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, List
 from faker import Faker
 import random
+import uuid
 
 fake = Faker()
 
@@ -94,7 +95,7 @@ def create_anterior_chamber_form_with_fake_data(client,  patient_id: Any, encoun
   entries: List[Dict[str, Any]] = []
 
   # 1) QuestionnaireResponse anchor
-  qr_full_url = "urn:uuid:qr-anterior"
+  qr_full_url = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -120,7 +121,7 @@ def create_anterior_chamber_form_with_fake_data(client,  patient_id: Any, encoun
       body_text=s["body_text"], body_code=s["body_code"],
       value_text=pick(), performer_ref=performer_ref, qr_full_url=qr_full_url,
     )
-    full_url = f"urn:uuid:obs-anterior-{idx}"
+    full_url = f"urn:uuid:{uuid.uuid4()}"
     obs_full_urls.append(full_url)
     entries.append({
       "fullUrl": full_url,
@@ -145,7 +146,7 @@ def create_anterior_chamber_form_with_fake_data(client,  patient_id: Any, encoun
     ),
   }
   entries.append({
-    "fullUrl": "urn:uuid:list-anterior",
+    "fullUrl": f"urn:uuid:{uuid.uuid4()}",
     "resource": list_body,
     "request": {"method": "POST", "url": "List"},
   })

@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 
 fake = Faker()
@@ -128,7 +129,7 @@ def create_ascan_form_with_fake_data(client, patient_id: Any, encounter_id: Any,
 
   entries: List[Dict[str, Any]] = []
 
-  qr_full_url = "urn:uuid:qr-ascan"
+  qr_full_url = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -141,8 +142,8 @@ def create_ascan_form_with_fake_data(client, patient_id: Any, encounter_id: Any,
     qr["author"] = {"reference": performer_ref}
   entries.append({"fullUrl": qr_full_url, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
-  dev_right_fu = "urn:uuid:dev-iol-right"
-  dev_left_fu = "urn:uuid:dev-iol-left"
+  dev_right_fu = f"urn:uuid:{uuid.uuid4()}"
+  dev_left_fu = f"urn:uuid:{uuid.uuid4()}"
   dev_type = {"text": "Intraocular lens"}
   device_right = {"resourceType": "Device", "status": "active", "type": dev_type, "deviceName": [{"name": right["iol_brand"], "type": "manufacturer-name"}], "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_ASCAN}]}}
   device_left = {"resourceType": "Device", "status": "active", "type": dev_type, "deviceName": [{"name": left["iol_brand"], "type": "manufacturer-name"}], "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_ASCAN}]}}
@@ -175,7 +176,7 @@ def create_ascan_form_with_fake_data(client, patient_id: Any, encounter_id: Any,
       obs = _obs_quantity(pid, eid, code=code, text=text, unit=unit, value=value, body_site_code=side["body_code"], body_site_text=side["body_text"], method_text=side["method"], performer_ref=performer_ref, qr_full_url=qr_full_url)
       if code == "final_iol_power":
         obs["device"] = {"reference": dev_fu}
-      fu = f"urn:uuid:obs-{prefix.lower().replace(' ', '-')}-{code}-{idx}"
+      fu = f"urn:uuid:{uuid.uuid4()}"
       created_fus.append(fu)
       entries.append({"fullUrl": fu, "resource": obs, "request": {"method": "POST", "url": "Observation"}})
 
@@ -185,7 +186,7 @@ def create_ascan_form_with_fake_data(client, patient_id: Any, encounter_id: Any,
     ]
     for idx, (text, code, value) in enumerate(specs_i):
       obs = _obs_integer(pid, eid, code=code, text=text, value=int(value), body_site_code=side["body_code"], body_site_text=side["body_text"], method_text=side["method"], performer_ref=performer_ref, qr_full_url=qr_full_url)
-      fu = f"urn:uuid:obs-{prefix.lower().replace(' ', '-')}-{code}-i-{idx}"
+      fu = f"urn:uuid:{uuid.uuid4()}"
       created_fus.append(fu)
       entries.append({"fullUrl": fu, "resource": obs, "request": {"method": "POST", "url": "Observation"}})
     return created_fus
@@ -211,7 +212,7 @@ def create_ascan_form_with_fake_data(client, patient_id: Any, encounter_id: Any,
     "meta": {"tag": [{"system": FORM_TAG_SYSTEM, "code": FORM_CODE_ASCAN}]},
     "entry": list_entries,
   }
-  entries.append({"fullUrl": "urn:uuid:list-ascan", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction a-scan)")

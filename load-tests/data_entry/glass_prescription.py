@@ -3,6 +3,7 @@ from faker import Faker
 import random
 from datetime import datetime, timezone
 from typing import List
+import uuid
 
 
 fake = Faker()
@@ -60,7 +61,7 @@ def create_glass_prescription_form_with_fake_data(client, patient_id: Any, encou
   entries: List[Dict[str, Any]] = []
 
   # QuestionnaireResponse anchor
-  qr_fu = "urn:uuid:qr-glass"
+  qr_fu = f"urn:uuid:{uuid.uuid4()}"
   qr = {
     "resourceType": "QuestionnaireResponse",
     "status": "completed",
@@ -74,7 +75,7 @@ def create_glass_prescription_form_with_fake_data(client, patient_id: Any, encou
   entries.append({"fullUrl": qr_fu, "resource": qr, "request": {"method": "POST", "url": "QuestionnaireResponse"}})
 
   # VisionPrescription DV
-  vp_dv_fu = "urn:uuid:vp-dv"
+  vp_dv_fu = f"urn:uuid:{uuid.uuid4()}"
   vp_dv = {
     "resourceType": "VisionPrescription",
     "status": "active",
@@ -93,7 +94,7 @@ def create_glass_prescription_form_with_fake_data(client, patient_id: Any, encou
   entries.append({"fullUrl": vp_dv_fu, "resource": vp_dv, "request": {"method": "POST", "url": "VisionPrescription"}})
 
   # VisionPrescription NV
-  vp_nv_fu = "urn:uuid:vp-nv"
+  vp_nv_fu = f"urn:uuid:{uuid.uuid4()}"
   vp_nv = {
     "resourceType": "VisionPrescription",
     "status": "active",
@@ -136,7 +137,7 @@ def create_glass_prescription_form_with_fake_data(client, patient_id: Any, encou
   va_fus: List[str] = []
   for idx, (label, value, side) in enumerate(va_map):
     o = va_obs(f"{label}", str(value), side)
-    fu = f"urn:uuid:obs-va-{idx}"
+    fu = f"urn:uuid:{uuid.uuid4()}"
     va_fus.append(fu)
     entries.append({"fullUrl": fu, "resource": o, "request": {"method": "POST", "url": "Observation"}})
 
@@ -157,7 +158,7 @@ def create_glass_prescription_form_with_fake_data(client, patient_id: Any, encou
       + [{"item": {"reference": fu}} for fu in va_fus]
     ),
   }
-  entries.append({"fullUrl": "urn:uuid:list-glass", "resource": list_body, "request": {"method": "POST", "url": "List"}})
+  entries.append({"fullUrl": f"urn:uuid:{uuid.uuid4()}", "resource": list_body, "request": {"method": "POST", "url": "List"}})
 
   bundle = {"resourceType": "Bundle", "type": "transaction", "entry": entries}
   resp = client.post("", json=bundle, name="POST / (transaction glass-prescription)")
