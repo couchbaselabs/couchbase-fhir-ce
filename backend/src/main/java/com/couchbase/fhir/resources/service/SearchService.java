@@ -1,6 +1,8 @@
 package com.couchbase.fhir.resources.service;
 
+import ca.uhn.fhir.context.BaseRuntimeChildDefinition;
 import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.context.RuntimeResourceDefinition;
 import ca.uhn.fhir.context.RuntimeSearchParam;
 import ca.uhn.fhir.rest.api.SummaryEnum;
 import ca.uhn.fhir.rest.api.server.RequestDetails;
@@ -10,16 +12,15 @@ import ca.uhn.fhir.rest.server.exceptions.ResourceGoneException;
 import com.couchbase.client.java.search.SearchQuery;
 import com.couchbase.client.java.search.sort.SearchSort;
 import com.couchbase.fhir.resources.config.TenantContextHolder;
+import com.couchbase.fhir.resources.search.*;
 import com.couchbase.fhir.resources.search.validation.FhirSearchParameterPreprocessor;
 import com.couchbase.fhir.resources.search.validation.FhirSearchValidationException;
 import com.couchbase.fhir.resources.util.*;
 import com.couchbase.fhir.resources.validation.FhirBucketValidator;
 import com.couchbase.fhir.resources.validation.FhirBucketValidationException;
-import com.couchbase.fhir.resources.search.SearchQueryResult;
-import com.couchbase.fhir.resources.search.SearchStateManager;
-import com.couchbase.fhir.resources.search.ChainParam;
-import com.couchbase.fhir.resources.search.PaginationState;
 import ca.uhn.fhir.model.api.Include;
+import org.hl7.fhir.instance.model.api.IBase;
+import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Resource;
 import org.slf4j.Logger;
@@ -229,14 +230,22 @@ public class SearchService {
         
         // Check for chained parameters FIRST (before validation)
         ChainParam chainParam = detectChainParameter(searchParams, resourceType);
-        
+
+        //Check for Has Parameters FIRST
+        HasParam hasParam = detectHasParameter(searchParams);
+
         // Validate search parameters (excluding chain, _include, _revinclude - they have special syntax)
         Map<String, List<String>> paramsToValidate = new java.util.HashMap<>(allParams);
         
         // Remove chain parameter from validation since validator doesn't understand chain syntax
         if (chainParam != null) {
-            paramsToValidate.remove(chainParam.getOriginalParameter());
+             paramsToValidate.remove(chainParam.getOriginalParameter());
             logger.debug("🔍 Detected chain parameter '{}', excluding from validation", chainParam.getOriginalParameter());
+        }
+
+        if(hasParam != null) {
+            paramsToValidate.remove("_has");
+            logger.debug("🔍 Detected HAS parameter, excluding from validation");
         }
         
         // Remove _include/_revinclude from validation since validator doesn't parse their syntax correctly
@@ -288,6 +297,8 @@ public class SearchService {
             }
             logger.debug("🔍 Total _include parameters: {}", includes.size());
         }
+
+
         
     // Remove control parameters from search criteria (we already captured userExplicitCount)
         searchParams.remove("_summary");
@@ -303,6 +314,12 @@ public class SearchService {
             searchParams.remove(chainParam.getOriginalParameter());
             allParams.remove(chainParam.getOriginalParameter());
             logger.debug("🔍 Removed chain parameter '{}' from query building", chainParam.getOriginalParameter());
+        }
+
+        if(hasParam != null) {
+            searchParams.remove("_has");
+            allParams.remove("_has");
+            logger.debug("🔍 Removed has parameter from query building");
         }
         
         // Build search queries - use allParams to handle multiple values for the same parameter
@@ -323,6 +340,13 @@ public class SearchService {
         if (chainParam != null) {
             Bundle result = handleChainSearch(resourceType, ftsQueries, chainParam, includes, count,
                                    sortFields, summaryMode, elements, totalMode, bucketName, requestDetails);
+            RequestPerfBagUtils.addTiming(requestDetails, "search_service", System.currentTimeMillis() - searchStartMs);
+            RequestPerfBagUtils.addCount(requestDetails, "search_results", result.getTotal());
+            return result;
+        }
+
+        if(hasParam != null){
+            Bundle result  = handleHasSearch(resourceType , hasParam , ftsQueries , bucketName , sortFields , count , requestDetails);
             RequestPerfBagUtils.addTiming(requestDetails, "search_service", System.currentTimeMillis() - searchStartMs);
             RequestPerfBagUtils.addCount(requestDetails, "search_results", result.getTotal());
             return result;
@@ -451,6 +475,28 @@ public class SearchService {
         
         return null;
     }
+
+    /**
+     * Detect if any parameter is a Has parameter
+     */
+    private HasParam detectHasParameter(Map<String, String> searchParams) {
+        for (Map.Entry<String, String> e : searchParams.entrySet()) {
+            String key = e.getKey();
+            String value = e.getValue();
+
+            if (!key.startsWith("_has:")) {
+                continue;
+            }
+
+            HasParam hp = HasParam.parse(key, value);
+            if (hp != null) {
+                logger.info("🔁 Detected HAS parameter: {}", hp);
+                return hp;
+            }
+        }
+
+        return null;
+    }
     
     /**
      * Build search queries from criteria parameters
@@ -550,7 +596,6 @@ public class SearchService {
                     ftsQueries.add(quantitySearch);
                     logger.debug("🔍 Added Quantity query for {}: {}", paramName, quantitySearch.export());
                     break;
-                case HAS:
                 case SPECIAL:
                 case NUMBER:
                     logger.warn("Unsupported search parameter type: {} for parameter: {}", searchParam.getParamType(), paramName);
@@ -2606,7 +2651,8 @@ public class SearchService {
                    bundle.getEntry().size(), totalCount, needsPagination ? "YES" : "NO");
         return bundle;
     }
-    
+
+
     /**
      * FASTPATH: Handle chained search with pure JSON assembly (10x memory savings)
      * Bypasses HAPI parsing/serialization for both primary and included resources, returns UTF-8 bytes (2x savings vs String)
@@ -2745,7 +2791,112 @@ public class SearchService {
         
         return bundleBytes;
     }
-    
+
+
+
+    /**
+     * Handle Has search with two-query strategy
+     */
+    private Bundle handleHasSearch(String resourceType , HasParam hasParam, List<SearchQuery> ftsQueries , String bucketName , List<SearchSort> sortFields , int count , RequestDetails requestDetails){
+
+        String baseUrl = extractBaseUrl(requestDetails, bucketName);
+        Map<String, List<String>> chainCriteria = Map.of(hasParam.getCriteriaParam(), List.of(hasParam.getCriteriaValue()));
+        SearchQueryResult hasQueryResult = buildSearchQueries(hasParam.getTargetResource(), chainCriteria);
+        List<SearchQuery> hasQueries = hasQueryResult.getFtsQueries();
+        hasQueries.addAll(ftsQueries);
+        FtsSearchService.FtsSearchResult ftsResult = ftsKvSearchService.searchForAllKeys(hasQueries, hasParam.getTargetResource(), sortFields);
+        List<String> docKeys = new ArrayList<>(ftsResult.getDocumentKeys());
+        List<Resource> referencedDocs =  ftsKvSearchService.getDocumentsFromKeys(docKeys ,  hasParam.getTargetResource());
+
+
+        if (referencedDocs.isEmpty()) {
+            logger.warn("🔗 No referenced resources found for has query, returning empty bundle");
+            return createEmptyBundle();
+        }
+
+        long totalCount = referencedDocs.size();  // Accurate total from FTS metadata
+        boolean needsPagination = referencedDocs.size() > count;
+
+        // Step 3: Get keys for first page
+        List<Resource> firstPageKeys = needsPagination ? referencedDocs.subList(0, count) : referencedDocs;
+
+        Set<String> results = new HashSet<>();
+
+        for (IBaseResource res : firstPageKeys) {
+            String ref = extractSubjectReference(fhirContext, res);
+            if (ref != null) {
+                results.add(ref);
+            }
+        }
+
+        List<Resource> primaryResources = ftsKvSearchService.getDocumentsFromKeys(results.stream().toList(),resourceType);
+
+
+        String continuationToken = null;
+
+        if (needsPagination) {
+            // Serialize queries and chain metadata for re-execution
+            List<String> serializedQueries = serializeFtsQueries(hasQueries);
+            List<String> serializedSortFields = serializeSortFields(sortFields);
+
+            PaginationState paginationState = PaginationState.builder()
+                    .searchType("has")
+                    .resourceType(resourceType)
+                    .primaryResourceCount((int) totalCount)  // Store for Bundle.total
+                    .primaryFtsQueriesJson(serializedQueries)
+                    .primaryOffset(count)  // Next page starts at offset=count
+                    .primaryPageSize(count)
+                    .sortFieldsJson(serializedSortFields)
+                     .bucketName(bucketName)
+                    .baseUrl(baseUrl)
+                    .useLegacyKeyList(false)  // Query-based approach
+                    .build();
+
+            continuationToken = searchStateManager.storePaginationState(paginationState);
+            logger.info("✅ Created HAS PaginationState: token={}, strategy=query-based, offset={}, total={}",
+                    continuationToken, count, totalCount);
+        }
+
+        Bundle bundle = new Bundle();
+        bundle.setType(Bundle.BundleType.SEARCHSET);
+        bundle.setTotal( primaryResources.size());
+        for (Resource resource : primaryResources) {
+            Resource filteredResource = applyResourceFiltering(resource, null, null);
+            bundle.addEntry()
+                    .setResource(filteredResource)
+                    .getSearch()
+                    .setMode(Bundle.SearchEntryMode.MATCH);
+        }
+
+        bundle.addLink()
+                .setRelation("self")
+                .setUrl(baseUrl + "/" + resourceType + "?_has" +":"+hasParam.getTargetResource()+":"+ hasParam.getReferenceField()+":"+hasParam.getCriteriaParam() + "=" + hasParam.getCriteriaValue());
+
+        // Add next link if there are more results
+        if (continuationToken != null && needsPagination) {
+            bundle.addLink()
+                    .setRelation("next")
+                    .setUrl(baseUrl + "/" + resourceType + "?_page=" + continuationToken + "&_offset=" + count + "&_count=" + count);
+        }
+
+        return  bundle;
+    }
+
+    public String extractSubjectReference(FhirContext ctx, IBaseResource resource) {
+        RuntimeResourceDefinition def = ctx.getResourceDefinition(resource);
+        BaseRuntimeChildDefinition subjectChild = def.getChildByName("subject");
+        if (subjectChild == null) return null;
+
+        List<IBase> values = subjectChild.getAccessor().getValues(resource);
+        if (values == null || values.isEmpty()) return null;
+
+        if (values.get(0) instanceof org.hl7.fhir.r4.model.Reference ref) {
+            return ref.getReference();
+        }
+
+        return null;
+    }
+
     /**
      * Handle pagination requests for both legacy and new pagination strategies
      * Supports both HAPI and fastpath rendering
