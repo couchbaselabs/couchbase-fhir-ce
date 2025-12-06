@@ -116,7 +116,7 @@ def fetch_complaints(client, patient_id: Any, encounter_id: Optional[Any] = None
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_COMPLAINTS}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -130,7 +130,7 @@ def fetch_complaints(client, patient_id: Any, encounter_id: Optional[Any] = None
   qr_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_COMPLAINTS}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -140,7 +140,7 @@ def fetch_complaints(client, patient_id: Any, encounter_id: Optional[Any] = None
   cond_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_COMPLAINTS}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     cond_params["encounter"] = f"Encounter/{str(encounter_id)}"

@@ -89,7 +89,7 @@ def fetch_free_text(client, patient_id: Any, encounter_id: Optional[Any] = None)
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_FREE_TEXT}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -99,13 +99,13 @@ def fetch_free_text(client, patient_id: Any, encounter_id: Optional[Any] = None)
     return bundle
 
   # Fallback by tag
-  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_FREE_TEXT}", "_count": 100}
+  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_FREE_TEXT}", "_count": 50}
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
   qr_resp = client.get("QuestionnaireResponse", params=qr_params, name="GET /QuestionnaireResponse?_tag=free_text")
   qr_bundle = _resp_json(qr_resp) or {}
 
-  comm_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_FREE_TEXT}", "_count": 100}
+  comm_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_FREE_TEXT}", "_count": 50}
   if encounter_id is not None:
     comm_params["encounter"] = f"Encounter/{str(encounter_id)}"
   comm_resp = client.get("Communication", params=comm_params, name="GET /Communication?_tag=free_text")

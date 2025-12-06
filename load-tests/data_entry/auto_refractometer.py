@@ -186,7 +186,7 @@ def fetch_auto_refractometer(client, patient_id: str, encounter_id: Optional[str
         "subject": f"Patient/{pid}",
         "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_AUTOREF}",
         "_include": ["List:item"],
-        "_count": 200,
+        "_count": 50,
     }
     if encounter_id:
         params["encounter"] = f"Encounter/{encounter_id}"
@@ -200,7 +200,7 @@ def fetch_auto_refractometer(client, patient_id: str, encounter_id: Optional[str
     qr_params: Dict[str, Any] = {
         "subject": f"Patient/{pid}",
         "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_AUTOREF}",
-        "_count": 200,
+        "_count": 50,
     }
     if encounter_id:
         qr_params["encounter"] = f"Encounter/{encounter_id}"
@@ -214,7 +214,7 @@ def fetch_auto_refractometer(client, patient_id: str, encounter_id: Optional[str
     obs_params: Dict[str, Any] = {
         "subject": f"Patient/{pid}",
         "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_AUTOREF}",
-        "_count": 200,
+        "_count": 50,
     }
     if encounter_id:
         obs_params["encounter"] = f"Encounter/{encounter_id}"

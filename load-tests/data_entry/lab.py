@@ -124,7 +124,7 @@ def create_lab_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
 
 def fetch_lab(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Optional[Dict[str, Any]]:
   pid = str(patient_id)
-  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_include": ["List:item"], "_count": 200}
+  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_include": ["List:item"], "_count": 50}
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
   list_resp = client.get("List", params=params, name="GET /List?code=lab&_include=List:item")
@@ -132,12 +132,12 @@ def fetch_lab(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Op
   if bundle:
     return bundle
   # Fallback by tag
-  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_count": 100}
+  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_count": 50}
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
   qr_resp = client.get("QuestionnaireResponse", params=qr_params, name="GET /QuestionnaireResponse?_tag=lab")
   qr_bundle = _resp_json(qr_resp) or {}
-  obs_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_count": 200}
+  obs_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_LAB}", "_count": 50}
   if encounter_id is not None:
     obs_params["encounter"] = f"Encounter/{str(encounter_id)}"
   obs_resp = client.get("Observation", params=obs_params, name="GET /Observation?_tag=lab")

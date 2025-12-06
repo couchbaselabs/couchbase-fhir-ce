@@ -187,7 +187,7 @@ def create_pgp_form_with_fake_data(client, patient_id: Any, encounter_id: Any, u
 
 def fetch_pgp(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Optional[Dict[str, Any]]:
   pid = str(patient_id)
-  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PGP}", "_include": ["List:item"], "_count": 200}
+  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PGP}", "_include": ["List:item"], "_count": 50}
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
   list_resp = client.get("List", params=params, name="GET /List?code=pgp&_include=List:item")
@@ -196,7 +196,7 @@ def fetch_pgp(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Op
     return bundle
   # Fallback by tag
   def _fetch(path: str) -> Dict[str, Any]:
-    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PGP}", "_count": 200}
+    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PGP}", "_count": 50}
     if encounter_id is not None:
       p["encounter"] = f"Encounter/{str(encounter_id)}"
     r = client.get(path, params=p, name=f"GET /{path}?_tag=pgp")

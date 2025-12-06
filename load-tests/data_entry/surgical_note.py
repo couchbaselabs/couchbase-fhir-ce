@@ -26,7 +26,7 @@ def _resp_json(resp) -> Optional[Dict[str, Any]]:
 
 def fetch_surgical_notes(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Optional[Dict[str, Any]]:
   pid = str(patient_id)
-  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_SURG}", "_include": ["List:item"], "_count": 200}
+  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_SURG}", "_include": ["List:item"], "_count": 50}
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
   list_resp = client.get("List", params=params, name="GET /List?code=surgical_notes&_include=List:item")
@@ -35,7 +35,7 @@ def fetch_surgical_notes(client, patient_id: Any, encounter_id: Optional[Any] = 
     return bundle
   # Fallback
   def _fetch(path: str) -> Dict[str, Any]:
-    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_SURG}", "_count": 200}
+    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_SURG}", "_count": 50}
     if encounter_id is not None:
       p["encounter"] = f"Encounter/{str(encounter_id)}"
     r = client.get(path, params=p, name=f"GET /{path}?_tag=surgical_notes")

@@ -171,7 +171,7 @@ def fetch_glass_prescription(client, patient_id: Any, encounter_id: Optional[Any
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_GLASSES}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -182,7 +182,7 @@ def fetch_glass_prescription(client, patient_id: Any, encounter_id: Optional[Any
 
   # Fallback by tag
   def _fetch(path: str) -> Dict[str, Any]:
-    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_GLASSES}", "_count": 200}
+    p: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_GLASSES}", "_count": 50}
     if encounter_id is not None:
       p["encounter"] = f"Encounter/{str(encounter_id)}"
     r = client.get(path, params=p, name=f"GET /{path}?_tag=glass_prescription")

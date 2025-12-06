@@ -225,7 +225,7 @@ def fetch_ascan(client, patient_id: Any, encounter_id: Optional[Any] = None) -> 
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ASCAN}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -238,7 +238,7 @@ def fetch_ascan(client, patient_id: Any, encounter_id: Optional[Any] = None) -> 
   qr_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ASCAN}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -248,7 +248,7 @@ def fetch_ascan(client, patient_id: Any, encounter_id: Optional[Any] = None) -> 
   obs_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ASCAN}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     obs_params["encounter"] = f"Encounter/{str(encounter_id)}"

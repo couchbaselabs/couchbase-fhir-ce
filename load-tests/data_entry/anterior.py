@@ -166,7 +166,7 @@ def fetch_ac(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Opt
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ANTERIOR}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -180,7 +180,7 @@ def fetch_ac(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Opt
   qr_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ANTERIOR}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
@@ -190,7 +190,7 @@ def fetch_ac(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Opt
   obs_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_ANTERIOR}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id is not None:
     obs_params["encounter"] = f"Encounter/{str(encounter_id)}"

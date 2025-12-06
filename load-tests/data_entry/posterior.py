@@ -103,19 +103,19 @@ def create_posterior_chamber_form_with_fake_data(client,  patient_id: Any, encou
 
 def fetch_pc(client, patient_id: Any, encounter_id: Optional[Any] = None) -> Optional[Dict[str, Any]]:
   pid = str(patient_id)
-  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_include": ["List:item"], "_count": 200}
+  params: Dict[str, Any] = {"subject": f"Patient/{pid}", "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_include": ["List:item"], "_count": 50}
   if encounter_id is not None:
     params["encounter"] = f"Encounter/{str(encounter_id)}"
   list_resp = client.get("List", params=params, name="GET /List?code=posterior_chamber&_include=List:item")
   bundle = _resp_json(list_resp)
   if bundle:
     return bundle
-  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_count": 200}
+  qr_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_count": 50}
   if encounter_id is not None:
     qr_params["encounter"] = f"Encounter/{str(encounter_id)}"
   qr_resp = client.get("QuestionnaireResponse", params=qr_params, name="GET /QuestionnaireResponse?_tag=posterior_chamber")
   qr_bundle = _resp_json(qr_resp) or {}
-  obs_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_count": 200}
+  obs_params: Dict[str, Any] = {"subject": f"Patient/{pid}", "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_PC}", "_count": 50}
   if encounter_id is not None:
     obs_params["encounter"] = f"Encounter/{str(encounter_id)}"
   obs_resp = client.get("Observation", params=obs_params, name="GET /Observation?_tag=posterior_chamber")

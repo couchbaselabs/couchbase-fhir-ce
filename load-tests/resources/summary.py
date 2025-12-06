@@ -52,15 +52,15 @@ def fhir_patient_sidebar(client, patient_id: Any, encounter_id: Any | None = Non
     encounter_total = _bundle_total(enc_count_json)
 
     # Questionnaires as form templates
-    questionnaires_resp = client.get("Questionnaire", params={"_count": 200}, name="GET /Questionnaire")
+    questionnaires_resp = client.get("Questionnaire", params={"_count": 50}, name="GET /Questionnaire")
     questionnaires_json = _resp_json(questionnaires_resp) or {}
 
     # Locations
-    locations_resp = client.get("Location", params={"_count": 200}, name="GET /Location")
+    locations_resp = client.get("Location", params={"_count": 50}, name="GET /Location")
     locations_json = _resp_json(locations_resp) or {}
 
     # Practitioners
-    practitioners_resp = client.get("Practitioner", params={"_count": 200}, name="GET /Practitioner")
+    practitioners_resp = client.get("Practitioner", params={"_count": 50}, name="GET /Practitioner")
     practitioners_json = _resp_json(practitioners_resp) or {}
 
     # Encounter detail (optional): resolve referenced Patient/Practitioner(s)/Location(s)
@@ -157,7 +157,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Encounters for patient
     encounters_resp = client.get(
         "Encounter",
-        params={"subject": f"Patient/{pid}", "_count": 200},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /Encounter?subject=",
     )
     encounters_json = _resp_json(encounters_resp) or {}
@@ -165,7 +165,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Notes -> Communication (patient subject)
     comms_resp = client.get(
         "Communication",
-        params={"subject": f"Patient/{pid}", "_count": 200},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /Communication?subject=",
     )
     communications_json = _resp_json(comms_resp) or {}
@@ -175,7 +175,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
         "QuestionnaireResponse",
         params={
             "subject": f"Patient/{pid}",
-            "_count": 200,
+            "_count": 50,
             "_include": [
                 "QuestionnaireResponse:questionnaire",
                 "QuestionnaireResponse:encounter",
@@ -189,7 +189,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     refraction_codes = ",".join(["9780-8", "9781-6", "17634-2", "17635-9", "9827-0", "9828-8"])
     obs_refraction_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "code": refraction_codes, "_count": 200},
+        params={"subject": f"Patient/{pid}", "code": refraction_codes, "_count": 50},
         name="GET /Observation?subject=&code=(refraction)",
     )
     obs_refraction_json = _resp_json(obs_refraction_resp) or {}
@@ -198,7 +198,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     iop_codes = ",".join(["8716-3", "8717-1"])
     obs_iop_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "code": iop_codes, "_count": 200},
+        params={"subject": f"Patient/{pid}", "code": iop_codes, "_count": 50},
         name="GET /Observation?subject=&code=(iop)",
     )
     obs_iop_json = _resp_json(obs_iop_resp) or {}
@@ -206,7 +206,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Conditions (problem/diagnoses)
     conditions_resp = client.get(
         "Condition",
-        params={"subject": f"Patient/{pid}", "_count": 200},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /Condition?subject=",
     )
     conditions_json = _resp_json(conditions_resp) or {}
@@ -214,7 +214,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Procedures
     procedures_resp = client.get(
         "Procedure",
-        params={"subject": f"Patient/{pid}", "_count": 200},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /Procedure?subject=",
     )
     procedures_json = _resp_json(procedures_resp) or {}
@@ -222,7 +222,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # CarePlans (recommendations)
     careplans_resp = client.get(
         "CarePlan",
-        params={"subject": f"Patient/{pid}", "_count": 100},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /CarePlan?subject=",
     )
     careplans_json = _resp_json(careplans_resp) or {}
@@ -230,7 +230,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # ServiceRequests
     sr_resp = client.get(
         "ServiceRequest",
-        params={"subject": f"Patient/{pid}", "_count": 200},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /ServiceRequest?subject=",
     )
     servicerequests_json = _resp_json(sr_resp) or {}
@@ -238,7 +238,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # MedicationRequests (medication orders)
     medreq_resp = client.get(
         "MedicationRequest",
-        params={"subject": f"Patient/{pid}", "_count": 200, "_include": ["MedicationRequest:medication"]},
+        params={"subject": f"Patient/{pid}", "_count": 50, "_include": ["MedicationRequest:medication"]},
         name="GET /MedicationRequest?subject=&_include=medication",
     )
     medreq_json = _resp_json(medreq_resp) or {}
@@ -246,7 +246,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Free text + media -> DocumentReference
     docref_resp = client.get(
         "DocumentReference",
-        params={"subject": f"Patient/{pid}", "_count": 100},
+        params={"subject": f"Patient/{pid}", "_count": 50},
         name="GET /DocumentReference?subject=",
     )
     docref_json = _resp_json(docref_resp) or {}
@@ -254,7 +254,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # VisionPrescription (prescription glasses)
     vision_resp = client.get(
         "VisionPrescription",
-        params={"patient": f"Patient/{pid}", "_count": 100},
+        params={"patient": f"Patient/{pid}", "_count": 50},
         name="GET /VisionPrescription?patient=",
     )
     vision_json = _resp_json(vision_resp) or {}
@@ -262,7 +262,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # DiagnosticReport with included analyte Observations
     diag_resp = client.get(
         "DiagnosticReport",
-        params={"subject": f"Patient/{pid}", "_count": 200, "_include": ["DiagnosticReport:result"]},
+        params={"subject": f"Patient/{pid}", "_count": 50, "_include": ["DiagnosticReport:result"]},
         name="GET /DiagnosticReport?subject=&_include=result",
     )
     diag_json = _resp_json(diag_resp) or {}
@@ -270,7 +270,7 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # AllergyIntolerance
     allergy_resp = client.get(
         "AllergyIntolerance",
-        params={"patient": f"Patient/{pid}", "_count": 100},
+        params={"patient": f"Patient/{pid}", "_count": 50},
         name="GET /AllergyIntolerance?patient=",
     )
     allergy_json = _resp_json(allergy_resp) or {}
@@ -278,14 +278,14 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     # Screening/social history Observations
     social_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "category": "social-history", "_count": 200},
+        params={"subject": f"Patient/{pid}", "category": "social-history", "_count": 50},
         name="GET /Observation?subject=&category=social-history",
     )
     social_json = _resp_json(social_resp) or {}
 
     survey_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "category": "survey", "_count": 200},
+        params={"subject": f"Patient/{pid}", "category": "survey", "_count": 50},
         name="GET /Observation?subject=&category=survey",
     )
     survey_json = _resp_json(survey_resp) or {}
@@ -294,21 +294,21 @@ def fhir_patient_summary(client, patient_id: Any) -> Optional[Dict[str, Any]]:
     spo2_codes = ",".join(["59408-5", "2708-6"])  # SpO2
     spo2_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "code": spo2_codes, "_count": 100},
+        params={"subject": f"Patient/{pid}", "code": spo2_codes, "_count": 50},
         name="GET /Observation?subject=&code=(spo2)",
     )
     spo2_json = _resp_json(spo2_resp) or {}
 
     hr_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "code": "8867-4", "_count": 100},
+        params={"subject": f"Patient/{pid}", "code": "8867-4", "_count": 50},
         name="GET /Observation?subject=&code=(heart-rate)",
     )
     hr_json = _resp_json(hr_resp) or {}
 
     bp_resp = client.get(
         "Observation",
-        params={"subject": f"Patient/{pid}", "code": "85354-9", "_count": 100},
+        params={"subject": f"Patient/{pid}", "code": "85354-9", "_count": 50},
         name="GET /Observation?subject=&code=(bp)",
     )
     bp_json = _resp_json(bp_resp) or {}

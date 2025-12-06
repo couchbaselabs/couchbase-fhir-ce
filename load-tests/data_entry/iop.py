@@ -238,7 +238,7 @@ def fetch_iop(client, patient_id: str, encounter_id: Optional[str] = None) -> Op
     "subject": f"Patient/{pid}",
     "code": f"{FORM_TAG_SYSTEM}|{FORM_CODE_IOP}",
     "_include": ["List:item"],
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id:
     params["encounter"] = f"Encounter/{encounter_id}"
@@ -252,7 +252,7 @@ def fetch_iop(client, patient_id: str, encounter_id: Optional[str] = None) -> Op
   qr_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_IOP}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id:
     qr_params["encounter"] = f"Encounter/{encounter_id}"
@@ -262,7 +262,7 @@ def fetch_iop(client, patient_id: str, encounter_id: Optional[str] = None) -> Op
   obs_params: Dict[str, Any] = {
     "subject": f"Patient/{pid}",
     "_tag": f"{FORM_TAG_SYSTEM}|{FORM_CODE_IOP}",
-    "_count": 200,
+    "_count": 50,
   }
   if encounter_id:
     obs_params["encounter"] = f"Encounter/{encounter_id}"
