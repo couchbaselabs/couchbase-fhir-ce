@@ -18,8 +18,9 @@
     <!-- Central reusable pattern (NO %ex tokens!) -->
     <property name="NO_STACK_PATTERN" value="%d{yyyy-MM-dd'T'HH:mm:ss.SSS'Z', UTC} %-5level %msg%n"/>
     
-    <!-- Log file location from environment variable -->
-    <property name="LOG_FILE" value="${LOGGING_FILE_NAME:-/app/logs/fhir.log}"/>
+    <!-- Log file locations from environment variables (works both in Docker and locally) -->
+    <property name="LOG_FILE" value="${LOGGING_FILE_NAME:-./logs/fhir.log}"/>
+    <property name="SDK_LOG_FILE" value="${SDK_LOGGING_FILE_NAME:-./logs/sdk.log}"/>
 
     <!-- Console appender (12-factor for containers) -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
@@ -46,12 +47,12 @@
     
     <!-- Separate file appender for Couchbase SDK logs -->
     <appender name="SDK_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/app/logs/sdk.log</file>
+        <file>${SDK_LOG_FILE}</file>
         <encoder>
             <pattern>${NO_STACK_PATTERN}</pattern>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/app/logs/sdk.log.%d{yyyy-MM-dd}.gz</fileNamePattern>
+            <fileNamePattern>${SDK_LOG_FILE}.%d{yyyy-MM-dd}.gz</fileNamePattern>
             <maxHistory>7</maxHistory>
             <totalSizeCap>1GB</totalSizeCap>
         </rollingPolicy>
