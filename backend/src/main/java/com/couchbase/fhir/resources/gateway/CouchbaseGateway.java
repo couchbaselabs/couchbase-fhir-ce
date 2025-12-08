@@ -105,6 +105,13 @@ public class CouchbaseGateway {
     }
     
     /**
+     * Execute a query operation with options.
+     */
+    public QueryResult query(String connectionName, String query, com.couchbase.client.java.query.QueryOptions options) {
+        return withCluster(connectionName, cluster -> cluster.query(query, options));
+    }
+    
+    /**
      * Execute an FTS search operation.
      */
     public SearchResult searchQuery(String connectionName, String indexName, 
