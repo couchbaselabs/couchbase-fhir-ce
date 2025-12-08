@@ -10,7 +10,6 @@ import com.couchbase.client.java.codec.JacksonJsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -29,42 +28,9 @@ public class ConnectionService {
     // Inject Spring's auto-configured ObjectMapper (includes JavaTimeModule and all Spring Boot defaults)
     private final ObjectMapper springObjectMapper;
     
-    // SDK Configuration Parameters - Optional, delegates to Couchbase SDK defaults if not configured
-    @Value("${couchbase.sdk.max-http-connections:#{null}}")
-    private Integer maxHttpConnections;
-    
-    @Value("${couchbase.sdk.num-kv-connections:#{null}}")
-    private Integer numKvConnections;
-    
-    @Value("${couchbase.sdk.num-io-threads:#{null}}")
-    private Integer numIoThreads;
-    
-    @Value("${couchbase.sdk.query-timeout-seconds:#{null}}")
-    private Integer queryTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.search-timeout-seconds:#{null}}")
-    private Integer searchTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.kv-timeout-seconds:#{null}}")
-    private Integer kvTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.connect-timeout-seconds:#{null}}")
-    private Integer connectTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.disconnect-timeout-seconds:#{null}}")
-    private Integer disconnectTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.transaction-timeout-seconds:#{null}}")
-    private Integer transactionTimeoutSeconds;
-    
-    @Value("${couchbase.sdk.enable-mutation-tokens:#{null}}")
-    private Boolean enableMutationTokens;
-    
-    // Transaction Configuration
-    // For single-node development, use NONE to avoid durability errors
-    // For production multi-node clusters, use MAJORITY or MAJORITY_AND_PERSIST_TO_ACTIVE
-    @Value("${couchbase.sdk.transaction-durability:#{null}}")
-    private String transactionDurability;
+    // SDK Configuration Parameters - Read from System properties at connection time
+    // (ConfigurationStartupService sets these from config.yaml BEFORE createConnection is called)
+    // NOTE: Cannot use @Value because config.yaml is loaded AFTER bean creation but BEFORE createConnection
     
     // Store active connections
     private final Map<String, Cluster> activeConnections = new ConcurrentHashMap<>();
@@ -115,6 +81,19 @@ public class ConnectionService {
      */
     public ConnectionResponse createConnection(ConnectionRequest request) {
         logger.info("Creating connection: {}", request.getName());
+        
+        // Read SDK configuration from System properties (set by ConfigurationStartupService from config.yaml)
+        Integer maxHttpConnections = getIntProperty("couchbase.sdk.max-http-connections");
+        Integer numKvConnections = getIntProperty("couchbase.sdk.num-kv-connections");
+        Integer numIoThreads = getIntProperty("couchbase.sdk.num-io-threads");
+        Integer queryTimeoutSeconds = getIntProperty("couchbase.sdk.query-timeout-seconds");
+        Integer searchTimeoutSeconds = getIntProperty("couchbase.sdk.search-timeout-seconds");
+        Integer kvTimeoutSeconds = getIntProperty("couchbase.sdk.kv-timeout-seconds");
+        Integer connectTimeoutSeconds = getIntProperty("couchbase.sdk.connect-timeout-seconds");
+        Integer disconnectTimeoutSeconds = getIntProperty("couchbase.sdk.disconnect-timeout-seconds");
+        Integer transactionTimeoutSeconds = getIntProperty("couchbase.sdk.transaction-timeout-seconds");
+        Boolean enableMutationTokens = getBooleanProperty("couchbase.sdk.enable-mutation-tokens");
+        String transactionDurability = System.getProperty("couchbase.sdk.transaction-durability");
         
         try {
             // Configure Jackson ObjectMapper with Java 8 date/time support
@@ -214,12 +193,10 @@ public class ConnectionService {
             
             ClusterEnvironment env = envBuilder.build();
             
-            logger.info("🔍 ClusterEnvironment details: {}", env.toString());
-            
             ClusterOptions options = ClusterOptions.clusterOptions(request.getUsername(), request.getPassword())
                     .environment(env);
                     
-            logger.info("🔧 SDK Configuration:");
+            logger.info("🔧 SDK Configuration from config.yaml:");
             // Log configured parameters
             boolean hasConfiguredParams = false;
             if (maxHttpConnections != null) {
@@ -272,6 +249,10 @@ public class ConnectionService {
             } else {
                 logger.info("   ℹ️  Other parameters using Couchbase Java SDK defaults");
             }
+            
+            // Log actual ClusterEnvironment details after all config applied
+            logger.info("🔍 ClusterEnvironment ACTUAL settings after config.yaml applied:");
+            logger.info("   📊 Environment details: {}", env.toString());
             
             Cluster cluster = Cluster.connect(request.getConnectionString(), options);
             
@@ -719,5 +700,32 @@ public class ConnectionService {
         
         // Default to a generic but helpful message
         return "Unable to connect to Couchbase server - please check hostname, credentials, and server status";
+    }
+    
+    /**
+     * Helper method to read Integer property from System properties
+     */
+    private Integer getIntProperty(String key) {
+        String value = System.getProperty(key);
+        if (value != null && !value.isEmpty()) {
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException e) {
+                logger.warn("⚠️ Invalid integer value for {}: {}", key, value);
+                return null;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Helper method to read Boolean property from System properties
+     */
+    private Boolean getBooleanProperty(String key) {
+        String value = System.getProperty(key);
+        if (value != null && !value.isEmpty()) {
+            return Boolean.parseBoolean(value);
+        }
+        return null;
     }
 } 
