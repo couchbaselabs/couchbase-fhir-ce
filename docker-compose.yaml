@@ -21,9 +21,9 @@ services:
       # Tomcat thread pool tuning (optional - defaults to Spring Boot defaults)
       # Uncomment and tune these for your specific workload during performance testing
       # Spring Boot defaults: 200 max threads, 10 min-spare, 100 accept-count, 10000 max-connections
-      # SERVER_TOMCAT_THREADS_MAX: 100 # Max threads
-      # SERVER_TOMCAT_THREADS_MIN_SPARE: 20 # Minimum idle threads
-      # SERVER_TOMCAT_ACCEPT_COUNT: 200 # Queue size when all threads busy
+      SERVER_TOMCAT_THREADS_MAX: 500 # Max threads
+      SERVER_TOMCAT_THREADS_MIN_SPARE: 20 # Minimum idle threads
+      SERVER_TOMCAT_ACCEPT_COUNT: 200 # Queue size when all threads busy
       # SERVER_TOMCAT_MAX_CONNECTIONS: 300 # Max simultaneous connections
       # SERVER_TOMCAT_CONNECTION_TIMEOUT: 20s # Connection timeout
       # SERVER_TOMCAT_MAX_KEEP_ALIVE_REQUESTS: 1000 # Keep-alive requests per connection
