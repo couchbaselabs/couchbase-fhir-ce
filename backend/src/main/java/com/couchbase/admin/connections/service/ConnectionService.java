@@ -36,6 +36,9 @@ public class ConnectionService {
     @Value("${couchbase.sdk.num-kv-connections:#{null}}")
     private Integer numKvConnections;
     
+    @Value("${couchbase.sdk.num-io-threads:#{null}}")
+    private Integer numIoThreads;
+    
     @Value("${couchbase.sdk.query-timeout-seconds:#{null}}")
     private Integer queryTimeoutSeconds;
     
@@ -146,6 +149,12 @@ public class ConnectionService {
                 });
             }
             
+            // Configure I/O event loop threads if specified (separate from ioConfig)
+            if (numIoThreads != null) {
+                envBuilder.ioEnvironment(com.couchbase.client.core.env.IoEnvironment.eventLoopThreadCount(numIoThreads));
+                logger.info("   🔧 Setting I/O event loop threads to {}", numIoThreads);
+            }
+            
             // Only configure IO settings if explicitly provided in config.yaml
             if (maxHttpConnections != null || numKvConnections != null || enableMutationTokens != null) {
                 envBuilder.ioConfig(io -> {
@@ -213,6 +222,10 @@ public class ConnectionService {
             boolean hasConfiguredParams = false;
             if (maxHttpConnections != null) {
                 logger.info("   ✅ maxHttpConnections: {} (from config.yaml)", maxHttpConnections);
+                hasConfiguredParams = true;
+            }
+            if (numIoThreads != null) {
+                logger.info("   ✅ numIoThreads: {} (from config.yaml)", numIoThreads);
                 hasConfiguredParams = true;
             }
             if (numKvConnections != null) {
