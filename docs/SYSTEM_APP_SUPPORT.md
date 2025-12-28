@@ -6,11 +6,11 @@ Implemented full support for **System Apps** using OAuth 2.0 `client_credentials
 
 ## Three App Types Supported
 
-| App Type | Scope Prefix | Grant Type | User Login? | Context | Redirect URIs Required? |
-|----------|-------------|------------|-------------|---------|------------------------|
-| **Patient** | `patient/*` | authorization_code | ✅ Yes | `patient` claim | ✅ Yes |
-| **Provider** | `user/*` | authorization_code | ✅ Yes | `fhirUser` claim | ✅ Yes |
-| **System** | `system/*` | client_credentials | ❌ No | (none) | ❌ No |
+| App Type     | Scope Prefix | Grant Type         | User Login? | Context          | Redirect URIs Required? |
+| ------------ | ------------ | ------------------ | ----------- | ---------------- | ----------------------- |
+| **Patient**  | `patient/*`  | authorization_code | ✅ Yes      | `patient` claim  | ✅ Yes                  |
+| **Provider** | `user/*`     | authorization_code | ✅ Yes      | `fhirUser` claim | ✅ Yes                  |
+| **System**   | `system/*`   | client_credentials | ❌ No       | (none)           | ❌ No                   |
 
 ---
 
@@ -25,6 +25,7 @@ The model already had a `clientType` field supporting `"patient"`, `"provider"`,
 Updated to dynamically assign grant types based on `clientType`:
 
 **Changes:**
+
 ```java
 // Authorization grant types
 // System apps use client_credentials, others use authorization_code
@@ -35,7 +36,7 @@ if ("system".equals(client.getClientType())) {
 } else {
     // Patient/Provider apps - authorization_code grant (interactive)
     builder.authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE);
-    
+
     // Add refresh token grant if offline_access scope is requested
     if (client.getScopes() != null && client.getScopes().contains("offline_access")) {
         builder.authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN);
@@ -51,6 +52,7 @@ ClientSettings.Builder clientSettingsBuilder = ClientSettings.builder()
 ```
 
 **Key Points:**
+
 - System apps use `CLIENT_CREDENTIALS` grant type
 - System apps **skip consent** (no user to show consent to)
 - Patient/Provider apps use `AUTHORIZATION_CODE` grant type
@@ -58,6 +60,7 @@ ClientSettings.Builder clientSettingsBuilder = ClientSettings.builder()
 ### 3. SMART Scope Validator (`SmartScopeValidator.java`)
 
 Already had `hasSystemScope()` method:
+
 ```java
 public boolean hasSystemScope(Authentication authentication) {
     List<String> scopes = extractScopes(authentication);
@@ -71,6 +74,7 @@ public boolean hasSystemScope(Authentication authentication) {
 Updated to skip patient/user context enforcement for system scopes:
 
 **Changes:**
+
 ```java
 logger.debug("✅ Authorized: {} for {} {}", authentication.getName(), operation, resourceType);
 
@@ -97,6 +101,7 @@ if (scopeValidator.hasUserScope(authentication)) {
 ```
 
 **Key Behaviors:**
+
 - ✅ System scopes (`system/*`) → **Full access**, no restrictions
 - ✅ Patient scopes (`patient/*`) → Restricted to single patient
 - 🔄 User scopes (`user/*`) → TODO (placeholder for provider apps)
@@ -136,11 +141,9 @@ const getMandatoryScopes = (clientType: "patient" | "provider" | "system") => {
   if (clientType === "system") {
     return []; // System apps use client_credentials - no mandatory scopes
   }
-  
+
   const base = ["openid", "fhirUser", "offline_access"];
-  const launchScope = clientType === "patient" 
-    ? "launch/patient" 
-    : "launch";
+  const launchScope = clientType === "patient" ? "launch/patient" : "launch";
   return [launchScope, ...base];
 };
 ```
@@ -148,22 +151,28 @@ const getMandatoryScopes = (clientType: "patient" | "provider" | "system") => {
 ### 3. UI Conditional Rendering
 
 **Launch Type** - Hidden for system apps:
+
 ```tsx
-{formData.clientType !== "system" && (
-  <FormControl component="fieldset">
-    <FormLabel>Launch Type</FormLabel>
-    <ToggleButtonGroup value={formData.launchType}>
-      <ToggleButton value="standalone">Standalone Launch</ToggleButton>
-      <ToggleButton value="ehr-launch" disabled>EHR Launch</ToggleButton>
-    </ToggleButtonGroup>
-  </FormControl>
-)}
+{
+  formData.clientType !== "system" && (
+    <FormControl component="fieldset">
+      <FormLabel>Launch Type</FormLabel>
+      <ToggleButtonGroup value={formData.launchType}>
+        <ToggleButton value="standalone">Standalone Launch</ToggleButton>
+        <ToggleButton value="ehr-launch" disabled>
+          EHR Launch
+        </ToggleButton>
+      </ToggleButtonGroup>
+    </FormControl>
+  );
+}
 ```
 
 **Authentication Type** - Public disabled for system apps:
+
 ```tsx
-<ToggleButton 
-  value="public" 
+<ToggleButton
+  value="public"
   disabled={formData.clientType === "system"}
 >
   Public Client
@@ -177,33 +186,40 @@ const getMandatoryScopes = (clientType: "patient" | "provider" | "system") => {
 ```
 
 **Redirect URIs** - Optional for system apps:
+
 ```tsx
 <Typography variant="subtitle2">
   Redirect URIs {formData.clientType !== "system" && "*"}
-</Typography>
+</Typography>;
 
-{formData.clientType === "system" ? (
-  <Alert severity="info">
-    System apps use client_credentials flow (no user interaction, no redirect)
-  </Alert>
-) : (
-  <TextField placeholder="https://example.com/callback" />
-)}
+{
+  formData.clientType === "system" ? (
+    <Alert severity="info">
+      System apps use client_credentials flow (no user interaction, no redirect)
+    </Alert>
+  ) : (
+    <TextField placeholder="https://example.com/callback" />
+  );
+}
 ```
 
 **Mandatory Scopes Display**:
+
 ```tsx
-{formData.clientType === "system" ? (
-  <Alert severity="info">
-    System apps don't require launch/openid/fhirUser scopes (no user interaction)
-  </Alert>
-) : (
-  <Box>
-    {getMandatoryScopes(formData.clientType).map(scope => 
-      <Chip label={scope.value} color="primary" />
-    )}
-  </Box>
-)}
+{
+  formData.clientType === "system" ? (
+    <Alert severity="info">
+      System apps don't require launch/openid/fhirUser scopes (no user
+      interaction)
+    </Alert>
+  ) : (
+    <Box>
+      {getMandatoryScopes(formData.clientType).map((scope) => (
+        <Chip label={scope.value} color="primary" />
+      ))}
+    </Box>
+  );
+}
 ```
 
 ### 4. Validation Updates
@@ -211,17 +227,22 @@ const getMandatoryScopes = (clientType: "patient" | "provider" | "system") => {
 ```typescript
 const handleRegisterClient = async () => {
   // System apps: require confidential authentication
-  if (formData.clientType === "system" && formData.authenticationType !== "confidential") {
-    setError("System apps must use confidential authentication (client_credentials flow requires a secret)");
+  if (
+    formData.clientType === "system" &&
+    formData.authenticationType !== "confidential"
+  ) {
+    setError(
+      "System apps must use confidential authentication (client_credentials flow requires a secret)"
+    );
     return;
   }
-  
+
   // Patient/Provider apps: require redirect URIs
   if (formData.clientType !== "system" && formData.redirectUris.length === 0) {
     setError("At least one redirect URI is required for interactive apps");
     return;
   }
-  
+
   // ... rest of validation
 };
 ```
@@ -235,7 +256,7 @@ const applyScopePreset = (mode: "custom" | "all-read" | "us-core") => {
   setScopeMode(mode);
   if (mode === "all-read") {
     const prefix = getScopePrefix(formData.clientType);
-    setScopesText(`${prefix}/*.rs`);  // patient/*.rs or user/*.rs or system/*.rs
+    setScopesText(`${prefix}/*.rs`); // patient/*.rs or user/*.rs or system/*.rs
   } else if (mode === "us-core") {
     const usCoreScopes = getUSCoreScopes(formData.clientType);
     setScopesText(usCoreScopes.join(" "));
@@ -376,6 +397,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ```
 
 Compare with patient-scoped token:
+
 ```bash
 # Amy's patient token (patient=example)
 PATIENT_TOKEN="..."
@@ -403,19 +425,21 @@ System apps have **unrestricted access** to ALL patients' data. Security measure
 ### Token Claims Comparison
 
 **Patient Token:**
+
 ```json
 {
   "sub": "amy.shaw@example.com",
   "scope": "openid fhirUser launch/patient patient/*.rs",
-  "patient": "example",  // ⭐ Restricted to this patient only
+  "patient": "example", // ⭐ Restricted to this patient only
   "fhirUser": "Patient/example"
 }
 ```
 
 **System Token:**
+
 ```json
 {
-  "sub": "system-app-123",  // Client ID, not a user
+  "sub": "system-app-123", // Client ID, not a user
   "scope": "system/Patient.rs system/Observation.rs"
   // NO patient or fhirUser claim - full access
 }
@@ -447,12 +471,14 @@ New log messages for system app detection:
 ## Next Steps
 
 **Phase 2 (Future):** Implement Provider/Clinician Apps (`user/*` scopes)
+
 - Add `fhirUser` context enforcement
 - Implement care team relationships
 - Role-based access control (which patients can Dr. Smith access?)
 - Organization boundaries
 
 **Phase 3 (Future):** Enhanced System App Security
+
 - IP whitelisting configuration
 - Client secret rotation
 - Fine-grained system scopes (e.g., `system/Patient.read` vs `system/Patient.write`)
@@ -463,15 +489,16 @@ New log messages for system app detection:
 ## Summary
 
 ✅ System apps now fully supported with:
+
 - **Backend**: Client credentials grant, no consent, full access
 - **Frontend**: Dynamic UI hiding launch/redirect URIs, scope prefix buttons
 - **Security**: Patient context enforcement bypassed for `system/*` scopes
 - **Testing**: Ready for backend service integration
 
 System apps are ideal for:
+
 - Bulk data exports
 - Analytics pipelines
 - Admin dashboards
 - Integration with external systems
 - Scheduled data synchronization
-
