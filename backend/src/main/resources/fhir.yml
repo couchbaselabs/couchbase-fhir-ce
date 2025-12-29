@@ -71,6 +71,9 @@ fhir:
         - name: "Tombstones"
           description: "FHIR Tombstones resources"
 
+        - name: "BulkJob"
+          description: "FHIR Bulk Job resources"
+
 # FHIR Resource to Collection Mapping Configuration
 mapping:
   resource_to_collection:
