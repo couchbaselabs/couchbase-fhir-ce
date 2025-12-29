@@ -266,10 +266,30 @@
         <!-- Required by Spring Authorization Server -->
         <input type="hidden" name="client_id" th:value="${client_id}" />
         <input type="hidden" name="state" th:value="${state}" />
-        <input type="hidden" name="redirect_uri" th:value="${redirect_uri}" />
-        <input type="hidden" name="response_type" th:value="${response_type}" />
-        <input type="hidden" name="code_challenge" th:value="${code_challenge}" th:if="${code_challenge != null}" />
-        <input type="hidden" name="code_challenge_method" th:value="${code_challenge_method}" th:if="${code_challenge_method != null}" />
+        <input
+          type="hidden"
+          name="redirect_uri"
+          th:value="${redirect_uri}"
+          th:if="${redirect_uri != null}"
+        />
+        <input
+          type="hidden"
+          name="response_type"
+          th:value="${response_type}"
+          th:if="${response_type != null}"
+        />
+        <input
+          type="hidden"
+          name="code_challenge"
+          th:value="${code_challenge}"
+          th:if="${code_challenge != null}"
+        />
+        <input
+          type="hidden"
+          name="code_challenge_method"
+          th:value="${code_challenge_method}"
+          th:if="${code_challenge_method != null}"
+        />
 
         <!-- Dynamic scope field updated by JavaScript based on user selection -->
         <input type="hidden" id="finalScope" name="scope" value="" />
