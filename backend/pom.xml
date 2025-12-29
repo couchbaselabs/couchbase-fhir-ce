@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.couchbase</groupId>
 	<artifactId>backend</artifactId>
-	<version>0.9.305</version>
+	<version>0.9.306</version>
 	<name>backend</name>
 	<description>Couchbase FHIR Server Community Edition</description>
 	<url>https://github.com/couchbaselabs/couchbase-fhir-ce</url>

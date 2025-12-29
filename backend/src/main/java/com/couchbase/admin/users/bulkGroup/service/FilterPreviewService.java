@@ -1,19 +1,17 @@
 package com.couchbase.admin.users.bulkGroup.service;
 
-import ca.uhn.fhir.rest.server.servlet.ServletRequestDetails;
 import com.couchbase.admin.connections.service.ConnectionService;
 import com.couchbase.client.java.Cluster;
-import com.couchbase.fhir.resources.service.SearchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Service to execute FHIR search filters and return preview results.
- * Uses SearchService directly - same code path as external FHIR clients (HAPI + FTS).
+ * NOW USES FtsGroupService for cleaner, modular architecture.
+ * 
  * Supports multiple resource types for Group membership:
  * Device, Group, Medication, Patient, Practitioner, PractitionerRole, RelatedPerson, Substance
  */
@@ -29,13 +27,13 @@ public class FilterPreviewService {
             "PractitionerRole", "RelatedPerson", "Substance"
     );
 
-    private final SearchService searchService;
+    private final FtsGroupService ftsGroupService;
     private final ConnectionService connectionService;
 
-    public FilterPreviewService(SearchService searchService, ConnectionService connectionService) {
-        this.searchService = searchService;
+    public FilterPreviewService(FtsGroupService ftsGroupService, ConnectionService connectionService) {
+        this.ftsGroupService = ftsGroupService;
         this.connectionService = connectionService;
-        logger.info("✅ FilterPreviewService initialized");
+        logger.info("✅ FilterPreviewService initialized with FtsGroupService");
     }
 
     /**
@@ -63,7 +61,7 @@ public class FilterPreviewService {
 
     /**
      * Execute a FHIR search filter and return preview (count + sample)
-     * Uses SearchService directly - same code path as external clients (HAPI + FTS)
+     * NOW USES FtsGroupService for modular, cleaner implementation.
      * 
      * @param resourceType The FHIR resource type (Patient, Practitioner, etc.)
      * @param filterQuery FHIR search parameters (e.g., "family=Smith&birthdate=ge1987-01-01")
@@ -77,35 +75,30 @@ public class FilterPreviewService {
         }
 
         try {
-            logger.info("🔍 Executing FHIR search via SearchService: {}?{}", resourceType, filterQuery);
+            logger.info("🔍 Executing filter preview via FtsGroupService: {}?{}", resourceType, filterQuery);
 
-            Map<String, List<String>> params = parseQueryParams(filterQuery);
+            // Use FtsGroupService to get preview
+            FtsGroupService.PreviewResult groupPreview = 
+                ftsGroupService.getPreview(resourceType, filterQuery, MAX_PREVIEW_RESULTS);
             
-            // Use searchForKeys() to get keys + total count (NO full resource fetch!)
-            Map<String, List<String>> sampleParams = new HashMap<>(params);
-            sampleParams.put("_count", List.of(String.valueOf(MAX_PREVIEW_RESULTS)));
-            ServletRequestDetails sampleRequest = createRequestDetails(resourceType, sampleParams);
-            
-            SearchService.KeySearchResult keyResult = searchService.searchForKeys(resourceType, sampleRequest);
-            
-            int totalCount = (int) keyResult.getTotalCount();
-            List<String> sampleKeys = keyResult.getKeys();
+            long totalCount = groupPreview.getTotalCount();
+            List<String> sampleKeys = groupPreview.getSampleKeys();
 
             // Use N1QL to fetch only display fields
             List<Map<String, Object>> sampleResources = fetchDisplayFields(resourceType, sampleKeys);
 
-            logger.info("✅ FHIR search complete: {} total, {} samples", totalCount, sampleResources.size());
+            logger.info("✅ Filter preview complete: {} total, {} samples", totalCount, sampleResources.size());
             return new FilterPreviewResult(totalCount, sampleResources, resourceType, filterQuery);
 
         } catch (Exception e) {
-            logger.error("❌ Error executing FHIR search", e);
+            logger.error("❌ Error executing filter preview", e);
             throw new RuntimeException("Failed to execute filter: " + e.getMessage(), e);
         }
     }
 
     /**
      * Get all member IDs matching a filter (for group creation/refresh)
-     * Uses SearchService with pagination to fetch all results
+     * NOW USES FtsGroupService with built-in pagination support.
      * 
      * @param resourceType The FHIR resource type
      * @param filterQuery FHIR search parameters
@@ -118,16 +111,11 @@ public class FilterPreviewService {
         }
 
         try {
-            logger.info("🔍 Fetching all matching IDs for {}?{} (max {})", resourceType, filterQuery, maxMembers);
+            logger.info("🔍 Fetching all matching IDs via FtsGroupService for {}?{} (max {})", 
+                       resourceType, filterQuery, maxMembers);
 
-            Map<String, List<String>> params = parseQueryParams(filterQuery);
-            params.put("_count", List.of(String.valueOf(Math.min(maxMembers, 10000)))); // Cap at 10k per request
-
-            ServletRequestDetails request = createRequestDetails(resourceType, params);
-            
-            // Use searchForKeys() to get keys directly (NO full resource fetch!)
-            SearchService.KeySearchResult keyResult = searchService.searchForKeys(resourceType, request);
-            List<String> ids = keyResult.getKeys();
+            // Use FtsGroupService which handles internal pagination
+            List<String> ids = ftsGroupService.getAllMatchingKeys(resourceType, filterQuery, maxMembers);
 
             logger.info("✅ Found {} matching resource IDs", ids.size());
             return ids;
@@ -136,51 +124,6 @@ public class FilterPreviewService {
             logger.error("❌ Error fetching matching IDs", e);
             throw new RuntimeException("Failed to fetch matching IDs: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * Create ServletRequestDetails from search parameters
-     */
-    private ServletRequestDetails createRequestDetails(String resourceType, Map<String, List<String>> params) {
-        // Convert Map<String, List<String>> to Map<String, String[]>
-        Map<String, String[]> searchParams = params.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        e -> e.getValue().toArray(new String[0])
-                ));
-        
-        ServletRequestDetails requestDetails = new ServletRequestDetails();
-        requestDetails.setParameters(searchParams);
-        return requestDetails;
-    }
-
-    /**
-     * Parse query string into parameter map
-     * HAPI requires Map<String, List<String>> for search parameters
-     */
-    private Map<String, List<String>> parseQueryParams(String query) {
-        Map<String, List<String>> params = new HashMap<>();
-        if (query == null || query.isEmpty()) {
-            return params;
-        }
-
-        // Remove leading '?' if present
-        String cleaned = query.startsWith("?") ? query.substring(1) : query;
-
-        for (String pair : cleaned.split("&")) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length == 2) {
-                try {
-                    String key = kv[0];
-                    String value = java.net.URLDecoder.decode(kv[1], "UTF-8");
-                    params.computeIfAbsent(key, k -> new ArrayList<>()).add(value);
-                } catch (Exception e) {
-                    params.computeIfAbsent(kv[0], k -> new ArrayList<>()).add(kv[1]);
-                }
-            }
-        }
-
-        return params;
     }
 
     /**

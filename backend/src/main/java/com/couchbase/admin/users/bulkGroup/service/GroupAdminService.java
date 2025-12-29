@@ -233,15 +233,26 @@ public class GroupAdminService {
                     "  g.type, " +
                     "  g.meta.lastUpdated " +
                     "FROM `%s`.`Resources`.`General` AS g " +
-                    "WHERE g.resourceType = 'Group' " +
+                    "USE INDEX (ftsGeneral USING FTS) " +
+                    "WHERE SEARCH(" +
+                    "        g, " +
+                    "        {" +
+                    "          \"query\": {" +
+                    "            \"term\": \"Group\", " +
+                    "            \"field\": \"resourceType\"" +
+                    "          }" +
+                    "        }, " +
+                    "        { \"index\": \"%s.Resources.ftsGeneral\" }" +
+                    "      ) " +
                     "ORDER BY g.meta.lastUpdated DESC",
                     EXT_RESOURCE_TYPE,
                     EXT_CREATION_FILTER,
                     EXT_CREATED_BY,
                     EXT_LAST_REFRESHED,
+                    BUCKET_NAME,
                     BUCKET_NAME);
 
-            logger.info("🔍 Querying Group summaries from fhir.Resources.General");
+            logger.info("🔍 Querying Group summaries from fhir.Resources.General using FTS");
             QueryResult result = cluster.query(query);
 
             List<GroupSummaryRow> rows = new ArrayList<>();

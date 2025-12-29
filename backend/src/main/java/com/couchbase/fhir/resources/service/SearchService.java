@@ -89,6 +89,12 @@ public class SearchService {
     @Autowired
     private IncludeReferenceExtractor includeReferenceExtractor;
     
+    @Autowired
+    private FhirSearchParameterResolver searchParameterResolver;
+    
+    @Autowired
+    private FtsQueryBuilder ftsQueryBuilder;
+    
     /**
      * Resolve conditional operations by finding matching resources.
      * Returns result indicating ZERO, ONE(id), or MANY matches for conditional operations.
@@ -631,111 +637,40 @@ public class SearchService {
     }
     
     /**
-     * Build search queries from criteria parameters
+     * Build search queries from criteria parameters.
+     * NEW: Uses modular FhirSearchParameterResolver + FtsQueryBuilder for cleaner architecture.
      */
     private SearchQueryResult buildSearchQueries(String resourceType, Map<String, List<String>> criteria) {
         List<SearchQuery> ftsQueries = new ArrayList<>();
-        List<String> filters = new ArrayList<>();
+        List<String> filters = new ArrayList<>();  // Kept for backward compatibility (unused in FTS/KV architecture)
         
         logger.debug("🔍 buildSearchQueries: Processing {} criteria for {}: {}", criteria.size(), resourceType, criteria);
         
         for (Map.Entry<String, List<String>> entry : criteria.entrySet()) {
             String rawParamName = entry.getKey();
-            String paramName = rawParamName;
-            String modifier = null;
-            
-            int colonIndex = rawParamName.indexOf(':');
-            if (colonIndex != -1) {
-                paramName = rawParamName.substring(0, colonIndex);
-                modifier = rawParamName.substring(colonIndex + 1);
-            }
-            
-            // paramName is already resolved by HAPI FHIR's getSearchParam() method below
             List<String> values = entry.getValue();
             
+            // Step 1: Resolve parameter using new modular resolver
+            FhirSearchParameterResolver.ResolvedParameter resolved = 
+                searchParameterResolver.resolve(resourceType, rawParamName);
             
-            RuntimeSearchParam searchParam = fhirContext
-                    .getResourceDefinition(resourceType)
-                    .getSearchParam(paramName);
-            
-            // Check for US Core parameters when HAPI doesn't know about them
-            if (searchParam == null) {
-                // Check if it's a US Core parameter
-                boolean isUSCoreParam = fhirConfig.isValidUSCoreSearchParam(resourceType, paramName);
-                if (isUSCoreParam) {
-                    org.hl7.fhir.r4.model.SearchParameter usCoreParam = fhirConfig.getUSCoreSearchParamDetails(resourceType, paramName);
-                    if (usCoreParam != null) {
-                        logger.debug("🔍 Found US Core parameter: {} for {}", paramName, resourceType);
-                        logger.debug("🔍 US Core parameter details:");
-                        logger.debug("   - Name: {}", usCoreParam.getName());
-                        logger.debug("   - Code: {}", usCoreParam.getCode());
-                        logger.debug("   - Expression: {}", usCoreParam.getExpression());
-                        logger.debug("   - Type: {}", usCoreParam.getType());
-                        
-                        // Try to build US Core queries using the new helper
-                        List<SearchQuery> usCoreQueries = USCoreSearchHelper.buildUSCoreFTSQueries(
-                            fhirContext, resourceType, paramName, values, usCoreParam);
-                        
-                        if (usCoreQueries != null && !usCoreQueries.isEmpty()) {
-                            ftsQueries.addAll(usCoreQueries);
-                            logger.debug("🔍 Added {} US Core queries for {}", usCoreQueries.size(), paramName);
-                            for (SearchQuery query : usCoreQueries) {
-                                logger.debug("🔍   - {}", query.export());
-                            }
-                        } else {
-                            logger.warn("🔍 Failed to build US Core queries for parameter: {}", paramName);
-                        }
-                    }
-                }
-                continue; // Still skip for now, just log what we found
+            if (resolved == null) {
+                logger.warn("🔍 Unknown search parameter: {} for resource type {}", rawParamName, resourceType);
+                continue;
             }
             
-            // Build appropriate query based on parameter type
-            logger.debug("🔍 Processing parameter: {} = {} (type: {})", paramName, values, searchParam.getParamType());
+            // Step 2: Build FTS queries using new modular builder
+            List<SearchQuery> paramQueries = ftsQueryBuilder.buildQueries(resolved, values);
             
-            switch (searchParam.getParamType()) {
-                case TOKEN:
-                    SearchQuery tokenQuery = TokenSearchHelper.buildTokenFTSQuery(fhirContext, resourceType, paramName, values.get(0));
-                    ftsQueries.add(tokenQuery);
-                    logger.debug("🔍 Added TOKEN query for {}: {}", paramName, tokenQuery.export());
-                    break;
-                case STRING:
-                    SearchQuery stringQuery = StringSearchHelper.buildStringFTSQuery(fhirContext, resourceType, paramName, values.get(0), searchParam, modifier);
-                    ftsQueries.add(stringQuery);
-                    logger.debug("🔍 Added STRING query for {}: {}", paramName, stringQuery.export());
-                    break;
-                case DATE:
-                    SearchQuery dateQuery = DateSearchHelper.buildDateFTS(fhirContext, resourceType, paramName, values);
-                    if (dateQuery != null) {
-                        ftsQueries.add(dateQuery);
-                        logger.debug("🔍 Added DATE query for {}: {}", paramName, dateQuery.export());
-                    }
-                    break;
-                case REFERENCE:
-                    // Convert REFERENCE parameters to FTS queries
-                    SearchQuery referenceQuery = ReferenceSearchHelper.buildReferenceFTSQuery(fhirContext, resourceType, paramName, values.get(0), searchParam);
-                    if (referenceQuery != null) {
-                        ftsQueries.add(referenceQuery);
-                        logger.debug("🔍 Added REFERENCE FTS query for {}: {}", paramName, referenceQuery.export());
-                    } else {
-                        logger.warn("🔍 Failed to build FTS query for REFERENCE parameter: {}", paramName);
-                    }
-                    break;
-                case URI:
-                case COMPOSITE:
-                case QUANTITY:
-                    SearchQuery quantitySearch = QuantitySearchHelper.buildQuantityFTSQuery(fhirContext ,resourceType , paramName , values.get(0), searchParam );
-                    ftsQueries.add(quantitySearch);
-                    logger.debug("🔍 Added Quantity query for {}: {}", paramName, quantitySearch.export());
-                    break;
-                case SPECIAL:
-                case NUMBER:
-                    logger.warn("Unsupported search parameter type: {} for parameter: {}", searchParam.getParamType(), paramName);
-                    break;
+            if (paramQueries != null && !paramQueries.isEmpty()) {
+                ftsQueries.addAll(paramQueries);
+                logger.debug("🔍 Added {} queries for parameter {}", paramQueries.size(), rawParamName);
+            } else {
+                logger.warn("🔍 Failed to build queries for parameter: {}", rawParamName);
             }
         }
         
-        logger.debug("🔍 buildSearchQueries: Built {} FTS queries (N1QL filters removed in FTS/KV architecture)", ftsQueries.size());
+        logger.debug("🔍 buildSearchQueries: Built {} FTS queries using modular architecture", ftsQueries.size());
         return new SearchQueryResult(ftsQueries, filters);
     }
     

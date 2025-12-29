@@ -57,6 +57,8 @@ const FILTER_EXAMPLES: Record<string, string[]> = {
     "birthdate=ge1987-01-01&birthdate=le1987-12-31",
     "identifier=http://hospital.smarthealthit.org|103270",
     "gender=female",
+    "_has:Condition:subject:code=http://snomed.info/sct|51868009",
+    "general-practitioner:Practitioner.name=Smith",
   ],
   Practitioner: [
     "name=Johnson",
