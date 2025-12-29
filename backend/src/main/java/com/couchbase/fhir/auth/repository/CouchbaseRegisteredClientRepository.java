@@ -131,10 +131,14 @@ public class CouchbaseRegisteredClientRepository implements RegisteredClientRepo
         }
         
         // Client settings
+        // Only system apps skip consent (no user interaction)
+        // Patient/Provider apps and legacy clients (null type) require consent
+        boolean requireConsent = !"system".equals(client.getClientType());
+        logger.debug("Client {} type='{}' requireConsent={}", 
+            client.getClientId(), client.getClientType(), requireConsent);
+        
         ClientSettings.Builder clientSettingsBuilder = ClientSettings.builder()
-            // System apps don't need consent (no user interaction)
-            // Patient/Provider apps require consent
-            .requireAuthorizationConsent(!"system".equals(client.getClientType()))
+            .requireAuthorizationConsent(requireConsent)
             .requireProofKey(client.isPkceEnabled()); // PKCE requirement
         
         builder.clientSettings(clientSettingsBuilder.build());
