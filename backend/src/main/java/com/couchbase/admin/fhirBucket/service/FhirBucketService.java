@@ -1,220 +1,225 @@
 package com.couchbase.admin.fhirBucket.service;
 
-import com.couchbase.admin.fhirBucket.model.*;
-import com.couchbase.admin.users.model.User;
-import com.couchbase.admin.users.service.UserService;
-import com.couchbase.common.config.AdminConfig;
-import com.couchbase.admin.fhirBucket.config.FhirBucketProperties;
 import com.couchbase.admin.connections.service.ConnectionService;
+import com.couchbase.admin.fhirBucket.config.FhirBucketProperties;
+import com.couchbase.admin.fhirBucket.model.FhirBucketConfig;
+import com.couchbase.admin.fhirBucket.model.FhirConversionRequest;
+import com.couchbase.admin.fhirBucket.model.FhirConversionResponse;
+import com.couchbase.admin.fhirBucket.model.FhirConversionStatus;
+import com.couchbase.admin.fhirBucket.model.FhirConversionStatusDetail;
 import com.couchbase.admin.fts.config.FtsIndexCreator;
 import com.couchbase.admin.gsi.service.GsiIndexService;
+import com.couchbase.admin.tokens.service.JwtTokenCacheService;
+import com.couchbase.admin.users.model.User;
+import com.couchbase.admin.users.service.UserService;
 import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.Collection;
+import com.couchbase.client.java.http.CouchbaseHttpClient;
+import com.couchbase.client.java.http.HttpPath;
+import com.couchbase.client.java.http.HttpResponse;
+import com.couchbase.client.java.http.HttpTarget;
+import com.couchbase.client.java.json.JsonArray;
 import com.couchbase.client.java.json.JsonObject;
-import com.couchbase.fhir.resources.service.FhirBucketConfigService;
-import com.couchbase.fhir.resources.validation.FhirBucketValidator;
 import com.couchbase.client.java.manager.collection.CollectionManager;
 import com.couchbase.client.java.manager.collection.CollectionSpec;
+import com.couchbase.client.java.query.QueryOptions;
+import com.couchbase.common.config.AdminConfig;
+import com.couchbase.fhir.resources.service.FhirBucketConfigService;
+import com.couchbase.fhir.resources.validation.FhirBucketValidator;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
-
-import com.couchbase.client.java.query.QueryOptions;
-import java.time.Duration;
-import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class FhirBucketService {
-    
+
     private static final Logger logger = LoggerFactory.getLogger(FhirBucketService.class);
-    
-    @Autowired
-    private ConnectionService connectionService;
-    
-    @Autowired
-    private FhirBucketConfigService fhirBucketConfigService;
-    
-    @Autowired
-    private FhirBucketValidator fhirBucketValidator;
-    
-    @Autowired
-    private FhirBucketProperties fhirProperties;
-    
-    @Autowired
-    private FtsIndexCreator ftsIndexCreator;
-    
-    @Autowired
-    private GsiIndexService gsiIndexService;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private ConnectionService connectionService;
+    @Autowired private FhirBucketConfigService fhirBucketConfigService;
+    @Autowired private FhirBucketValidator fhirBucketValidator;
+    @Autowired private FhirBucketProperties fhirProperties;
+    @Autowired private FtsIndexCreator ftsIndexCreator;
+    @Autowired private GsiIndexService gsiIndexService;
+    @Autowired private UserService userService;
+    @Autowired private AdminConfig adminConfig;
+    @Autowired(required = false) private com.couchbase.fhir.auth.AuthorizationServerConfig authorizationServerConfig;
+    @Autowired private JwtTokenCacheService jwtTokenCacheService;
 
-    @Autowired
-    private AdminConfig adminConfig;
-    
-    @Autowired(required = false)
-    private com.couchbase.fhir.auth.AuthorizationServerConfig authorizationServerConfig;
-    
-    @Autowired
-    private com.couchbase.admin.tokens.service.JwtTokenCacheService jwtTokenCacheService;
-    
-    // Store operation status
     private final Map<String, FhirConversionStatusDetail> operationStatus = new ConcurrentHashMap<>();
-    
-    public FhirBucketService() {
-        // Configuration will be loaded via @Autowired dependency
-    }
-    
-    /**
-     * Start FHIR bucket conversion process with custom configuration
-     */
+
+    /** Start FHIR bucket conversion process with custom configuration. */
     public FhirConversionResponse startConversion(String bucketName, String connectionName, FhirConversionRequest request) {
         String operationId = UUID.randomUUID().toString();
-        
-        // Create status tracking
         FhirConversionStatusDetail statusDetail = new FhirConversionStatusDetail(operationId, bucketName);
         operationStatus.put(operationId, statusDetail);
-        
-        // Start async conversion with custom config
         CompletableFuture.runAsync(() -> performConversion(operationId, bucketName, connectionName, request));
-        
-        return new FhirConversionResponse(
-            operationId, 
-            bucketName, 
-            FhirConversionStatus.INITIATED, 
-            "FHIR bucket conversion started"
-        );
+        return new FhirConversionResponse(operationId, bucketName, FhirConversionStatus.INITIATED, "FHIR bucket conversion started");
     }
-    
-    /**
-     * Start FHIR bucket conversion process with default configuration
-     */
+
+    /** Start FHIR bucket conversion process with default configuration. */
     public FhirConversionResponse startConversion(String bucketName, String connectionName) {
         return startConversion(bucketName, connectionName, null);
     }
-    
-    /**
-     * Get conversion status
-     */
+
+    /** Get conversion status. */
     public FhirConversionStatusDetail getConversionStatus(String operationId) {
         return operationStatus.get(operationId);
     }
-    
-    /**
-     * Perform the actual conversion process with custom configuration
-     */
+
+    /** Perform the actual conversion process with custom configuration. */
     private void performConversion(String operationId, String bucketName, String connectionName, FhirConversionRequest request) {
         FhirConversionStatusDetail status = operationStatus.get(operationId);
-        
         try {
             status.setStatus(FhirConversionStatus.IN_PROGRESS);
-            
-            // Get connection by name
+
             Cluster cluster = connectionService.getConnection(connectionName);
             if (cluster == null) {
                 throw new IllegalStateException("No active Couchbase connection found for: " + connectionName);
             }
-            
+
             CollectionManager collectionManager = cluster.bucket(bucketName).collections();
-            
-            // Step 1: Create Admin scope
-            updateStatus(status, "create_admin_scope", "Creating Admin scope");
-            createScope(collectionManager, "Admin");
-            status.setCompletedSteps(1);
-            
-            // Step 2: Create Resources scope
+
             updateStatus(status, "create_resources_scope", "Creating Resources scope");
             createScope(collectionManager, "Resources");
-            status.setCompletedSteps(2);
-            
-            // Step 3: Create Admin collections
-            updateStatus(status, "create_admin_collections", "Creating Admin collections");
-            createCollections(collectionManager, "Admin", fhirProperties.getScopes().get("admin"));
-            status.setCompletedSteps(3);
-            
-            // Step 4: Create Resource collections
+            status.setCompletedSteps(1);
+
             updateStatus(status, "create_resource_collections", "Creating Resource collections");
-            createCollections(collectionManager, "Resources", fhirProperties.getScopes().get("resources"));
-            status.setCompletedSteps(4);
-            
-            // Step 5: Create primary indexes
+            FhirBucketProperties.ScopeConfiguration resourcesScope = getScope("resources");
+            createCollections(collectionManager, "Resources", getCollectionNames(resourcesScope));
+            status.setCompletedSteps(2);
+
             updateStatus(status, "create_indexes", "Creating primary indexes for collections");
             createIndexes(cluster, bucketName);
-            status.setCompletedSteps(5);
-            
-            // Step 6: Build deferred indexes
+            status.setCompletedSteps(3);
+
             updateStatus(status, "build_deferred_indexes", "Building deferred indexes");
             buildDeferredIndexes(cluster, bucketName);
-            status.setCompletedSteps(6);
-            
-            // Step 7: Create FTS indexes
+            status.setCompletedSteps(4);
+
             updateStatus(status, "create_fts_indexes", "Creating FTS indexes for collections");
             createFtsIndexes(connectionName, bucketName);
-            status.setCompletedSteps(7);
-            
-            // Step 8: Create GSI indexes (for Auth collections)
+            status.setCompletedSteps(5);
+
             updateStatus(status, "create_gsi_indexes", "Creating GSI indexes from gsi-indexes.sql");
             createGsiIndexes(cluster, bucketName);
-            status.setCompletedSteps(8);
-            
-            // Step 9: Mark as FHIR bucket with custom configuration
+            status.setCompletedSteps(6);
+
             updateStatus(status, "mark_as_fhir", "Marking bucket as FHIR-enabled");
             markAsFhirBucketWithConfig(bucketName, connectionName, request);
-            status.setCompletedSteps(9);
+            status.setCompletedSteps(7);
 
-            // Step 10: Seed initial Admin user from config.yaml (if not already present)
-            updateStatus(status, "create_admin_user", "Creating initial Admin user");
-            createInitialAdminUserIfNeeded();
-            status.setCompletedSteps(10);
-            
-            // Step 11: Persist OAuth signing key (same key used since startup)
             updateStatus(status, "persist_oauth_key", "Persisting OAuth signing key");
             createOAuthSigningKey(cluster, bucketName);
-            status.setCompletedSteps(11);
-            
-            // Reload JWT token cache after initialization completes
-            // This ensures the cache is ready for token validation
-            logger.debug("🔐 Reloading JWT token cache after initialization...");
+            status.setCompletedSteps(8);
+
+            logger.debug("Reloading JWT token cache after initialization...");
             try {
                 jwtTokenCacheService.loadActiveTokens();
                 if (jwtTokenCacheService.isInitialized()) {
                     int cacheSize = jwtTokenCacheService.getCacheSize();
-                    logger.debug("✅ Token cache reloaded with {} active tokens", cacheSize);
+                    logger.debug("Token cache reloaded with {} active tokens", cacheSize);
                 } else {
-                    logger.debug("✅ Token cache initialized (no tokens yet)");
+                    logger.debug("Token cache initialized (no tokens yet)");
                 }
             } catch (Exception e) {
-                logger.warn("⚠️ Failed to reload token cache after initialization: {}", e.getMessage());
-                // Don't fail the initialization if cache reload fails
+                logger.warn("Failed to reload token cache after initialization: {}", e.getMessage());
             }
-            
-            // Completion
+
             status.setStatus(FhirConversionStatus.COMPLETED);
             status.setCurrentStepDescription("FHIR bucket conversion completed successfully");
-            // logger.info("FHIR conversion completed for bucket: {}", bucketName);
-            
         } catch (Exception e) {
-            // logger.error("FHIR conversion failed for bucket: {}", bucketName, e);
             status.setStatus(FhirConversionStatus.FAILED);
             status.setErrorMessage(e.getMessage());
             status.setCurrentStepDescription("Conversion failed: " + e.getMessage());
         }
     }
 
-    /**
-     * Create the initial Admin user based on config.yaml credentials, if it does not already exist.
-     * Uses local authentication so the Admin can later change their password via the Users UI.
-     */
+    /** Ensure the Admin scope and required Admin collections exist. */
+    public void ensureAdminCollections(String connectionName, String bucketName) {
+        Cluster cluster = connectionService.getConnection(connectionName);
+        if (cluster == null) {
+            logger.warn("No active connection found for: {}", connectionName);
+            return;
+        }
+
+        try {
+            CollectionManager collectionManager = cluster.bucket(bucketName).collections();
+            createScope(collectionManager, "Admin");
+            createCollections(collectionManager, "Admin", getAdminCollections());
+        } catch (Exception e) {
+            logger.warn("Failed to ensure Admin collections: {}", e.getMessage());
+            logger.debug("Admin collection ensure error", e);
+        }
+    }
+
+    /** Check whether Admin scope and required collections are already present. */
+    public boolean areAdminCollectionsPresent(String connectionName, String bucketName) {
+        Cluster cluster = connectionService.getConnection(connectionName);
+        if (cluster == null) {
+            return false;
+        }
+
+        try {
+            CollectionManager collectionManager = cluster.bucket(bucketName).collections();
+            var scopes = collectionManager.getAllScopes();
+            var adminScopeOpt = scopes.stream().filter(scope -> "Admin".equals(scope.name())).findFirst();
+            if (adminScopeOpt.isEmpty()) {
+                return false;
+            }
+
+            Set<String> expected = new HashSet<>(getAdminCollections());
+            Set<String> existing = adminScopeOpt.get().collections().stream()
+                .map(CollectionSpec::name)
+                .collect(Collectors.toSet());
+
+            return existing.containsAll(expected);
+        } catch (Exception e) {
+            logger.debug("Could not check Admin collections presence: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private FhirBucketProperties.ScopeConfiguration getScope(String name) {
+        Map<String, FhirBucketProperties.ScopeConfiguration> scopes = fhirProperties.getScopes();
+        return scopes != null ? scopes.get(name) : null;
+    }
+
+    private List<String> getCollectionNames(FhirBucketProperties.ScopeConfiguration scopeConfig) {
+        if (scopeConfig == null || scopeConfig.getCollections() == null) {
+            return List.of();
+        }
+        return scopeConfig.getCollections().stream()
+            .map(FhirBucketProperties.CollectionConfiguration::getName)
+            .collect(Collectors.toList());
+    }
+
+    private List<String> getAdminCollections() {
+        List<String> configured = getCollectionNames(getScope("admin"));
+        if (!configured.isEmpty()) {
+            return configured;
+        }
+        return Arrays.asList("config", "users", "tokens", "clients", "cache", "bulk_groups");
+    }
+
     private void createInitialAdminUserIfNeeded() {
         try {
             String email = adminConfig.getEmail();
@@ -222,221 +227,151 @@ public class FhirBucketService {
             String name = adminConfig.getName();
 
             if (email == null || email.isEmpty()) {
-                logger.warn("⚠️ Skipping initial Admin user creation: admin.email is not configured");
+                logger.warn("Skipping initial Admin user creation: admin.email is not configured");
                 return;
             }
 
-            // Check if user already exists
             if (userService.getUserById(email).isPresent()) {
-                logger.debug("👤 Initial Admin user '{}' already exists - skipping creation", email);
+                logger.debug("Initial Admin user '{}' already exists - skipping creation", email);
                 return;
             }
 
             User adminUser = new User();
-            adminUser.setId(email);               // Use email as ID (consistent with Admin UI)
+            adminUser.setId(email);
             adminUser.setUsername(name != null ? name : "Administrator");
             adminUser.setEmail(email);
             adminUser.setRole("admin");
             adminUser.setAuthMethod("local");
-            adminUser.setPasswordHash(password);  // Will be hashed by UserService.createUser
+            adminUser.setPasswordHash(password);
 
             userService.createUser(adminUser, "system");
-            logger.debug("✅ Initial Admin user '{}' created successfully in Admin.users collection", email);
+            logger.debug("Initial Admin user '{}' created successfully in Admin.users collection", email);
         } catch (Exception e) {
-            // Do not fail bucket initialization if seeding the Admin user fails
-            logger.error("❌ Failed to create initial Admin user from config.yaml: {}", e.getMessage());
+            logger.error("Failed to create initial Admin user from config.yaml: {}", e.getMessage());
         }
     }
-    
+
     private void updateStatus(FhirConversionStatusDetail status, String stepName, String description) {
         status.setCurrentStep(stepName);
         status.setCurrentStepDescription(description);
-        // logger.info("Operation {}: {}", status.getOperationId(), description);
     }
-    
+
     private void createScope(CollectionManager manager, String scopeName) throws Exception {
         try {
             manager.createScope(scopeName);
-            // logger.info("Created scope: {}", scopeName);
         } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                // logger.warn("Scope {} already exists, skipping", scopeName);
-            } else {
+            if (e.getMessage() == null || !e.getMessage().contains("already exists")) {
                 throw e;
             }
         }
     }
-    
-    private void createCollections(CollectionManager manager, String scopeName, 
-                                 FhirBucketProperties.ScopeConfiguration scopeConfig) throws Exception {
-        // logger.info("Creating collections for scope: {}", scopeName);
-        for (FhirBucketProperties.CollectionConfiguration collection : scopeConfig.getCollections()) {
+
+    private void createCollections(CollectionManager manager, String scopeName, List<String> collections) throws Exception {
+        if (collections == null || collections.isEmpty()) return;
+        for (String coll : collections) {
             try {
-                // logger.info("Creating collection: {}.{}", scopeName, collection.getName());
-                
-                // Check if collection has maxTTL configured
-                if (collection.getMaxTtlSeconds() != null && collection.getMaxTtlSeconds() > 0) {
-                    // Create collection with maxTTL using CollectionSpec
-                    Duration maxTtl = Duration.ofSeconds(collection.getMaxTtlSeconds());
-                    CollectionSpec spec = CollectionSpec.create(collection.getName(), scopeName, maxTtl);
-                    manager.createCollection(spec);
-                    logger.debug("✅ Created collection {}.{} with maxTTL: {}s", 
-                               scopeName, collection.getName(), collection.getMaxTtlSeconds());
-                } else {
-                    // Create collection without maxTTL (simple API)
-                    manager.createCollection(scopeName, collection.getName());
-                    // logger.info("Successfully created collection: {}.{}", scopeName, collection.getName());
-                }
+                manager.createCollection(CollectionSpec.create(coll, scopeName));
             } catch (Exception e) {
-                if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                    // logger.warn("Collection {}.{} already exists, skipping", scopeName, collection.getName());
-                } else {
-                    // logger.error("Failed to create collection {}.{}: {}", scopeName, collection.getName(), e.getMessage());
+                if (e.getMessage() == null || !e.getMessage().contains("already exists")) {
                     throw e;
                 }
             }
         }
     }
-    
+
     private void createIndexes(Cluster cluster, String bucketName) throws Exception {
-        // Create indexes for both scopes
-        for (Map.Entry<String, FhirBucketProperties.ScopeConfiguration> scopeEntry : 
-             fhirProperties.getScopes().entrySet()) {
-            
-            FhirBucketProperties.ScopeConfiguration scopeConfig = scopeEntry.getValue();
-            
-            for (FhirBucketProperties.CollectionConfiguration collection : scopeConfig.getCollections()) {
-                // Skip if collection has no indexes defined
-                if (collection.getIndexes() == null || collection.getIndexes().isEmpty()) {
+        FhirBucketProperties.ScopeConfiguration resourcesScope = getScope("resources");
+        if (resourcesScope == null || resourcesScope.getCollections() == null) {
+            return;
+        }
+
+        for (FhirBucketProperties.CollectionConfiguration collection : resourcesScope.getCollections()) {
+            if (collection.getIndexes() == null || collection.getIndexes().isEmpty()) {
+                continue;
+            }
+            for (FhirBucketProperties.IndexConfiguration index : collection.getIndexes()) {
+                if (index.getSql() == null) {
                     continue;
                 }
-                
-                for (FhirBucketProperties.IndexConfiguration index : collection.getIndexes()) {
-                    try {
-                        // Add null check and debug logging
-                        if (index.getSql() == null) {
-                            // logger.error("SQL is null for index: {} in collection: {}.{}", 
-                            //            index.getName(), scopeConfig.getName(), collection.getName());
-                            continue; // Skip this index
-                        }
-                        
-                        String sql = index.getSql().replace("{bucket}", bucketName);
-                        cluster.query(sql, QueryOptions.queryOptions().timeout(java.time.Duration.ofMinutes(5)));
-                        // logger.info("Created index: {} for collection: {}.{}", 
-                        //           index.getName(), scopeConfig.getName(), collection.getName());
-                    } catch (Exception e) {
-                        if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                            // logger.warn("Index {} already exists, skipping", index.getName());
-                        } else {
-                            throw e;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private void buildDeferredIndexes(Cluster cluster, String bucketName) throws Exception {
-        // Get the build commands from configuration
-        List<FhirBucketProperties.BuildCommand> buildCommands = fhirProperties.getBuildCommands();
-        
-        if (buildCommands != null && !buildCommands.isEmpty()) {
-            for (FhirBucketProperties.BuildCommand buildCommand : buildCommands) {                
-                // Execute the query to get the BUILD INDEX statements
-                String query = buildCommand.getQuery().replace("{bucket}", bucketName);
-                
                 try {
-                    var result = cluster.query(query);
-                    
-                    // Process each BUILD INDEX statement - use rowsAs() for raw string results
-                    for (String buildIndexSql : result.rowsAs(String.class)) {
-                        // Remove quotes if present
-                        buildIndexSql = buildIndexSql.replaceAll("^\"|\"$", "");
-                        // logger.info("Executing BUILD INDEX: {}", buildIndexSql);
-                        
-                        try {
-                            cluster.query(buildIndexSql);
-                            // logger.info("Successfully built index");
-                        } catch (Exception e) {
-                            logger.error("Failed to build index: {} - {}", buildIndexSql, e.getMessage());
-                            // Continue with other indexes even if one fails
-                        }
-                    }
+                    String sql = index.getSql().replace("{bucket}", bucketName);
+                    cluster.query(sql, QueryOptions.queryOptions().timeout(Duration.ofMinutes(5)));
                 } catch (Exception e) {
-                    logger.error("Failed to execute build command query: {}", query, e);
-                    throw e;
+                    if (e.getMessage() == null || !e.getMessage().contains("already exists")) {
+                        throw e;
+                    }
                 }
             }
-        } else {
-            // logger.info("No build commands found in configuration");
         }
     }
-    
+
+    private void buildDeferredIndexes(Cluster cluster, String bucketName) throws Exception {
+        List<FhirBucketProperties.BuildCommand> buildCommands = fhirProperties.getBuildCommands();
+        if (buildCommands == null || buildCommands.isEmpty()) {
+            return;
+        }
+        for (FhirBucketProperties.BuildCommand buildCommand : buildCommands) {
+            String query = buildCommand.getQuery().replace("{bucket}", bucketName);
+            var result = cluster.query(query);
+            for (String buildIndexSql : result.rowsAs(String.class)) {
+                buildIndexSql = buildIndexSql.replaceAll("^\"|\"$", "");
+                try {
+                    cluster.query(buildIndexSql);
+                } catch (Exception e) {
+                    logger.error("Failed to build index: {} - {}", buildIndexSql, e.getMessage());
+                }
+            }
+        }
+    }
+
     private void createFtsIndexes(String connectionName, String bucketName) throws Exception {
         try {
-            // Use the FtsIndexCreator to create all FTS indexes via REST API
             ftsIndexCreator.createAllFtsIndexesForBucket(connectionName, bucketName);
         } catch (Exception e) {
-            logger.error("❌ Failed to create FTS indexes for bucket: {}", bucketName, e);
-            // Don't throw the exception - FTS indexes are optional
-            // The bucket creation should continue even if FTS fails
-            logger.warn("⚠️ Continuing bucket creation without FTS indexes");
+            logger.error("Failed to create FTS indexes for bucket: {}", bucketName, e);
+            logger.warn("Continuing bucket creation without FTS indexes");
         }
     }
-    
+
     private void createGsiIndexes(Cluster cluster, String bucketName) throws Exception {
         try {
-            // Use the GsiIndexService to create GSI indexes from gsi-indexes.sql
             gsiIndexService.createGsiIndexes(cluster, bucketName);
         } catch (Exception e) {
-            logger.error("❌ Failed to create GSI indexes for bucket: {}", bucketName, e);
-            // Don't throw the exception - continue with bucket creation
-            // Some GSI indexes might be critical but we'll let the system continue
-            logger.warn("⚠️ Continuing bucket creation - some GSI indexes may be missing");
+            logger.error("Failed to create GSI indexes for bucket: {}", bucketName, e);
+            logger.warn("Continuing bucket creation - some GSI indexes may be missing");
         }
     }
-    
+
     private void markAsFhirBucketWithConfig(String bucketName, String connectionName, FhirConversionRequest request) throws Exception {
-        // Get connection to insert the FHIR configuration document
         Cluster cluster = connectionService.getConnection(connectionName);
         if (cluster == null) {
             throw new IllegalStateException("No active Couchbase connection found for: " + connectionName);
         }
-        
-        // Use custom configuration if provided, otherwise use defaults
-        FhirBucketConfig customConfig = (request != null) ? request.getFhirConfiguration() : null;
-        
-        // Create profile configuration
-        var profileConfig = com.couchbase.client.java.json.JsonArray.create();
+
+        FhirBucketConfig customConfig = request != null ? request.getFhirConfiguration() : null;
+
+        JsonArray profileConfig = JsonArray.create();
         if (customConfig != null && customConfig.getProfiles() != null && !customConfig.getProfiles().isEmpty()) {
             for (FhirBucketConfig.Profile profile : customConfig.getProfiles()) {
-                profileConfig.add(com.couchbase.client.java.json.JsonObject.create()
+                profileConfig.add(JsonObject.create()
                     .put("profile", profile.getProfile() != null ? profile.getProfile() : "US Core")
                     .put("version", profile.getVersion() != null ? profile.getVersion() : "6.1.0"));
             }
         } else {
-            // Default profile
-            profileConfig.add(com.couchbase.client.java.json.JsonObject.create()
-                .put("profile", "US Core")
-                .put("version", "6.1.0"));
+            profileConfig.add(JsonObject.create().put("profile", "US Core").put("version", "6.1.0"));
         }
-        
-        // Create validation configuration (simplified structure)
-        var validationConfig = com.couchbase.client.java.json.JsonObject.create();
+
+        JsonObject validationConfig = JsonObject.create();
         if (customConfig != null && customConfig.getValidation() != null) {
             FhirBucketConfig.Validation validation = customConfig.getValidation();
             validationConfig
                 .put("mode", validation.getMode() != null ? validation.getMode() : "lenient")
                 .put("profile", validation.getProfile() != null ? validation.getProfile() : "none");
         } else {
-            // Default validation (simplified)
-            validationConfig
-                .put("mode", "lenient")
-                .put("profile", "none");
+            validationConfig.put("mode", "lenient").put("profile", "none");
         }
-        
-        // Create logs configuration
-        var logsConfig = com.couchbase.client.java.json.JsonObject.create();
+
+        JsonObject logsConfig = JsonObject.create();
         if (customConfig != null && customConfig.getLogs() != null) {
             FhirBucketConfig.Logs logs = customConfig.getLogs();
             logsConfig
@@ -447,7 +382,6 @@ public class FhirBucketService {
                 .put("number", logs.getNumber() > 0 ? logs.getNumber() : 30)
                 .put("s3Endpoint", logs.getS3Endpoint() != null ? logs.getS3Endpoint() : "");
         } else {
-            // Default logs
             logsConfig
                 .put("enableSystem", false)
                 .put("enableCRUDAudit", false)
@@ -456,40 +390,29 @@ public class FhirBucketService {
                 .put("number", 30)
                 .put("s3Endpoint", "");
         }
-        
-        // Create the comprehensive FHIR configuration document
-        // Format createdAt as human-readable: "November 14, 2025 at 10:30:45 PM PST"
-        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
-        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' hh:mm:ss a z");
+
+        ZonedDateTime now = ZonedDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM dd, yyyy 'at' hh:mm:ss a z");
         String createdAtFormatted = now.format(formatter);
-        
-        var fhirConfig = com.couchbase.client.java.json.JsonObject.create()
+
+        JsonObject fhirConfig = JsonObject.create()
             .put("isFHIR", true)
             .put("createdAt", createdAtFormatted)
             .put("version", "1")
             .put("description", "FHIR-enabled bucket configuration")
-            .put("fhirRelease", customConfig != null && customConfig.getFhirRelease() != null ? 
-                 customConfig.getFhirRelease() : "Release 4")
+            .put("fhirRelease", customConfig != null && customConfig.getFhirRelease() != null ? customConfig.getFhirRelease() : "Release 4")
             .put("profiles", profileConfig)
             .put("validation", validationConfig)
             .put("logs", logsConfig);
-        
-        // Insert the document into Admin/config collection
+
         String documentId = "fhir-config";
-        String sql = String.format(
-            "INSERT INTO `%s`.`Admin`.`config` (KEY, VALUE) VALUES ('%s', %s)",
-            bucketName, documentId, fhirConfig.toString()
-        );
-        
+        String sql = String.format("INSERT INTO `%s`.`Admin`.`config` (KEY, VALUE) VALUES ('%s', %s)", bucketName, documentId, fhirConfig.toString());
         try {
-            cluster.query(sql);            
-            // Clear both caches since we just updated the FHIR configuration
+            cluster.query(sql);
             fhirBucketConfigService.clearConfigCache(bucketName, connectionName);
             fhirBucketValidator.clearCache(bucketName, connectionName);
-            
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                // Even if it already exists, clear both caches in case it was updated
                 fhirBucketConfigService.clearConfigCache(bucketName, connectionName);
                 fhirBucketValidator.clearCache(bucketName, connectionName);
             } else {
@@ -498,194 +421,122 @@ public class FhirBucketService {
             }
         }
     }
-    
-    /**
-     * Get all FHIR-enabled buckets
-     */
+
+    /** Get all FHIR-enabled buckets. */
     public List<String> getFhirBuckets(String connectionName) {
         try {
             Cluster cluster = connectionService.getConnection(connectionName);
             if (cluster == null) {
                 return new ArrayList<>();
             }
-            
-            // Query all buckets and check which ones are FHIR-enabled
+
             String sql = "SELECT name FROM system:buckets WHERE namespace_id = 'default'";
             var result = cluster.query(sql);
             var buckets = new ArrayList<String>();
-            
+
             for (var row : result.rowsAsObject()) {
-                String bucketName = row.getString("name");
-                if (isFhirBucket(bucketName, connectionName)) {
-                    buckets.add(bucketName);
+                String bucket = row.getString("name");
+                if (isFhirBucket(bucket, connectionName)) {
+                    buckets.add(bucket);
                 }
             }
-            
             return buckets;
         } catch (Exception e) {
             logger.error("Failed to get FHIR buckets: {}", e.getMessage());
             return new ArrayList<>();
         }
     }
-    
-    /**
-     * Check if a bucket is FHIR-enabled by looking for the configuration document
-     * Uses REST API to avoid SDK retry issues
-     */
+
+    /** Check if a bucket is FHIR-enabled by looking for the configuration document via REST API. */
     public boolean isFhirBucket(String bucketName, String connectionName) {
         try {
-            // Get connection details from connection service
             String hostname = connectionService.getHostname(connectionName);
             int port = connectionService.getPort(connectionName);
             var connectionDetails = connectionService.getConnectionDetails(connectionName);
-            
             if (hostname == null || connectionDetails == null) {
                 return false;
             }
-            
-            // Use REST API to check if fhir-config document exists
-            return checkFhirConfigViaRest(hostname, port, bucketName, connectionName,
-                                        connectionDetails.getUsername(), 
-                                        connectionDetails.getPassword());
-            
+            return checkFhirConfigViaRest(bucketName, connectionName);
         } catch (Exception e) {
             logger.error("Failed to check if bucket {} is FHIR-enabled: {}", bucketName, e.getMessage());
             return false;
         }
     }
-    
-    /**
-     * Check FHIR config document via REST API using SDK's HTTP client
-     */
-    private boolean checkFhirConfigViaRest(String hostname, int port, String bucketName, String connectionName,
-                                         String username, String password) {
+
+    private boolean checkFhirConfigViaRest(String bucketName, String connectionName) {
         try {
-            // Get the cluster connection to access the HTTP client
             Cluster cluster = connectionService.getConnection(connectionName);
             if (cluster == null) {
                 return false;
             }
-            
-            // Use SDK's HTTP client
-            com.couchbase.client.java.http.CouchbaseHttpClient httpClient = cluster.httpClient();
-            
-            // Construct the REST path for the fhir-config document
-            com.couchbase.client.java.http.HttpResponse httpResponse = httpClient.get(
-                com.couchbase.client.java.http.HttpTarget.manager(),
-                com.couchbase.client.java.http.HttpPath.of(
-                    "/pools/default/buckets/{}/scopes/Admin/collections/config/docs/fhir-config",
-                    bucketName
-                )
+
+            CouchbaseHttpClient httpClient = cluster.httpClient();
+            HttpResponse httpResponse = httpClient.get(
+                HttpTarget.manager(),
+                HttpPath.of("/pools/default/buckets/{}/scopes/Admin/collections/config/docs/fhir-config", bucketName)
             );
-            
+
             int statusCode = httpResponse.statusCode();
-            
-            // If we get a 200, the document exists (FHIR-enabled)
-            if (statusCode == 200) {
-                return true;
-            }
-            
-            // 404 means document doesn't exist (not FHIR-enabled)
-            if (statusCode == 404) {
-                return false;
-            }
-            
-            // Other status codes are unexpected
+            if (statusCode == 200) return true;
+            if (statusCode == 404) return false;
             logger.error("Unexpected status code {} when checking FHIR config for bucket {}", statusCode, bucketName);
             return false;
-            
         } catch (Exception e) {
-            // Log the error but don't fail the check
             logger.error("REST check for FHIR config failed: {}", e.getMessage());
             return false;
         }
     }
-    
-    /**
-     * Persist the current in-memory OAuth signing key to fhir.Admin.config collection
-     * Called during FHIR bucket initialization (Step 11)
-     * Uses the SAME key that was generated on startup for authentication
-     */
+
+    /** Persist the current in-memory OAuth signing key to fhir.Admin.config collection. */
     private void createOAuthSigningKey(Cluster cluster, String bucketName) {
         try {
             Collection configCollection = cluster.bucket(bucketName).scope("Admin").collection("config");
-            
-            // Check if key already exists
             try {
                 configCollection.get("oauth-signing-key");
-                logger.debug("🔐 OAuth signing key already exists in fhir.Admin.config");
+                logger.debug("OAuth signing key already exists in fhir.Admin.config");
                 return;
             } catch (com.couchbase.client.core.error.DocumentNotFoundException e) {
-                // Key doesn't exist, persist it
+                // proceed
             }
-            
-            // Get the CURRENT in-memory key from AuthorizationServerConfig
-            // This is the same key used for all JWTs issued since startup
+
+            if (authorizationServerConfig == null) {
+                throw new IllegalStateException("AuthorizationServerConfig not available to persist OAuth signing key");
+            }
+
             RSAKey rsaKey = authorizationServerConfig.getCurrentKey();
             if (rsaKey == null) {
                 throw new IllegalStateException("No OAuth signing key available to persist");
             }
-            
+
             String keyId = rsaKey.getKeyID();
-            logger.debug("🔐 [STEP-11] Persisting in-memory OAuth signing key - hasPrivateKey: {}, kid: {}", rsaKey.isPrivate(), keyId);
-            
-            // Serialize the RSAKey directly (not via JWKSet) to ensure private parts are included
             String jwkJson = rsaKey.toJSONString();
-            logger.debug("🔐 [STEP-11] Serialized RSAKey JSON length: {} chars", jwkJson.length());
-            logger.debug("🔐 [STEP-11] RSAKey JSON (first 200 chars): {}", 
-                jwkJson.length() > 200 ? jwkJson.substring(0, 200) + "..." : jwkJson);
-            
-            // Wrap in JWKSet format
             String jwkSetJson = String.format("{\"keys\":[%s]}", jwkJson);
-            logger.debug("🔐 [STEP-11] Complete JWKSet JSON length: {} chars", jwkSetJson.length());
-            
-            // Verify it can be parsed back with private key
-            JWKSet testParse = JWKSet.parse(jwkSetJson);
-            RSAKey testKey = (RSAKey) testParse.getKeys().get(0);
-            logger.debug("🔐 [STEP-11] Verification after parse - hasPrivateKey: {}", testKey.isPrivate());
-            
-            if (!testKey.isPrivate()) {
-                logger.error("❌ [STEP-11] BUG: Serialization lost private key! This should never happen.");
-                throw new IllegalStateException("JWKSet serialization lost private key");
-            }
-            
-            // Create document
-            // IMPORTANT: Store jwkSet as raw string to preserve private key parts
-            // JsonObject.fromJson() can strip private fields during re-serialization
+
             JsonObject doc = JsonObject.create()
-                    .put("id", "oauth-signing-key")
-                    .put("type", "jwk")
-                    .put("jwkSetString", jwkSetJson)  // Store as string
-                    .put("createdAt", Instant.now().toString())
-                    .put("updatedAt", Instant.now().toString());
-            
+                .put("id", "oauth-signing-key")
+                .put("type", "jwk")
+                .put("jwkSetString", jwkSetJson)
+                .put("createdAt", Instant.now().toString())
+                .put("updatedAt", Instant.now().toString());
+
             configCollection.upsert("oauth-signing-key", doc);
-            logger.debug("✅ Persisted OAuth signing key to fhir.Admin.config (kid: {})", keyId);
-            logger.debug("🔐 All JWTs issued since startup remain valid - same key now persisted");
-            
-            // Verify what was actually saved by reading it back
+            logger.debug("Persisted OAuth signing key to fhir.Admin.config (kid: {})", keyId);
             try {
                 var savedDoc = configCollection.get("oauth-signing-key").contentAsObject();
                 String savedJwkStr = savedDoc.getString("jwkSetString");
-                JWKSet verifySet = JWKSet.parse(savedJwkStr);
-                RSAKey verifyKey = (RSAKey) verifySet.getKeys().get(0);
-                logger.debug("🔐 [STEP-11] Verification after save - hasPrivateKey: {}", verifyKey.isPrivate());
-                if (!verifyKey.isPrivate()) {
-                    logger.error("❌ [STEP-11] Saved document lost private key!");
-                }
+                JWKSet.parse(savedJwkStr);
             } catch (Exception e) {
-                logger.warn("⚠️ [STEP-11] Could not verify saved key: {}", e.getMessage());
+                logger.warn("Could not verify saved key: {}", e.getMessage());
             }
-            
-            // Invalidate the cached key in AuthorizationServerConfig so it reloads from Couchbase
+
             if (authorizationServerConfig != null) {
                 authorizationServerConfig.invalidateKeyCache();
             }
-            
+
         } catch (Exception e) {
-            // Don't fail initialization if key creation fails
-            logger.error("❌ Failed to create OAuth signing key: {}", e.getMessage(), e);
-            logger.warn("⚠️ OAuth tokens will use ephemeral key (won't survive restarts)");
+            logger.error("Failed to create OAuth signing key: {}", e.getMessage(), e);
+            logger.warn("OAuth tokens will use ephemeral key (won't survive restarts)");
         }
     }
 }
+

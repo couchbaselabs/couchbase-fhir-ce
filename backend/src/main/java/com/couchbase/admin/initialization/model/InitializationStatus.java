@@ -38,6 +38,7 @@ public class InitializationStatus {
     private boolean hasConnection;
     private boolean bucketExists;
     private boolean isFhirInitialized;
+    private boolean isAdminInitialized;
     
     public InitializationStatus() {
     }
@@ -94,6 +95,14 @@ public class InitializationStatus {
     
     public void setFhirInitialized(boolean fhirInitialized) {
         this.isFhirInitialized = fhirInitialized;
+    }
+
+    public boolean isAdminInitialized() {
+        return isAdminInitialized;
+    }
+
+    public void setAdminInitialized(boolean adminInitialized) {
+        this.isAdminInitialized = adminInitialized;
     }
 }
 

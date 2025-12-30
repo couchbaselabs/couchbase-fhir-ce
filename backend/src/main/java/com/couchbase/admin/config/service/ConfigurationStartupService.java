@@ -47,6 +47,9 @@ public class ConfigurationStartupService {
     
     @Autowired
     private JwtTokenCacheService jwtTokenCacheService;
+
+    @Autowired
+    private com.couchbase.admin.fhirBucket.service.FhirBucketService fhirBucketService;
     
     @Autowired(required = false)
     private com.couchbase.fhir.auth.AuthorizationServerConfig authorizationServerConfig;
@@ -333,6 +336,17 @@ public class ConfigurationStartupService {
             // Check initialization status for single-tenant "fhir" bucket
             checkAndReportInitializationStatus();
 
+            // Ensure Admin collections exist (if missing) so admin seeding can proceed
+            try {
+                InitializationStatus status = initializationService.checkStatus(DEFAULT_CONNECTION_NAME);
+                if (status != null && !status.isAdminInitialized()) {
+                    logger.info("ℹ️ Admin collections not present - ensuring Admin scope/collections now");
+                    fhirBucketService.ensureAdminCollections(DEFAULT_CONNECTION_NAME, initializationService.getFhirBucketName());
+                }
+            } catch (Exception e) {
+                logger.debug("Could not ensure admin collections at startup: {}", e.getMessage());
+            }
+
             // Attempt to seed initial Admin user (from config.yaml) when appropriate
             seedAdminUserIfNeeded();
             
@@ -530,15 +544,15 @@ public class ConfigurationStartupService {
      */
     private void seedAdminUserIfNeeded() {
         try {
-            // Only attempt seeding when the FHIR bucket is initialized and ready.
+            // Only attempt seeding when Admin collections exist (we don't require full FHIR initialization).
             try {
                 InitializationStatus status = initializationService.checkStatus(DEFAULT_CONNECTION_NAME);
-                if (status == null || status.getStatus() != InitializationStatus.Status.READY) {
-                    logger.info("ℹ️  Skipping admin seeding: FHIR initialization status is not READY (status={})", status == null ? "null" : status.getStatus());
+                if (status == null || !status.isAdminInitialized()) {
+                    logger.info("ℹ️  Skipping admin seeding: Admin collections not present (status={})", status == null ? "null" : status.getStatus());
                     return;
                 }
             } catch (Exception e) {
-                logger.warn("⚠️ Could not determine FHIR initialization status before seeding admin user: {}", e.getMessage());
+                logger.warn("⚠️ Could not determine admin initialization status before seeding admin user: {}", e.getMessage());
                 logger.debug("Initialization status check error:", e);
                 // If we cannot determine status, fail-safe: skip seeding to avoid exceptions during startup
                 return;

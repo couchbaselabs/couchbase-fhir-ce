@@ -4,11 +4,17 @@ import com.couchbase.admin.connections.service.ConnectionService;
 import com.couchbase.admin.initialization.model.InitializationStatus;
 import com.couchbase.admin.initialization.model.InitializationStatus.Status;
 import com.couchbase.client.java.Cluster;
+import com.couchbase.client.java.manager.collection.CollectionSpec;
 import com.couchbase.fhir.auth.AuthorizationServerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Service to check FHIR system initialization status
@@ -73,6 +79,9 @@ public class InitializationService {
         }
         
         logger.debug("✅ Bucket '{}' exists", FHIR_BUCKET_NAME);
+
+        boolean adminInitialized = checkAdminInitialization(cluster, FHIR_BUCKET_NAME);
+        status.setAdminInitialized(adminInitialized);
         
         // Step 3: Check if bucket is FHIR-initialized (has Admin.config.fhir-config document)
         boolean isFhirInitialized = checkFhirInitialization(cluster, FHIR_BUCKET_NAME, connectionName);
@@ -102,6 +111,34 @@ public class InitializationService {
         status.setMessage("FHIR system is fully initialized and ready.");
         
         return status;
+    }
+
+    /**
+     * Check if the Admin scope and required collections exist.
+     */
+    public boolean checkAdminInitialization(Cluster cluster, String bucketName) {
+        try {
+            var collectionManager = cluster.bucket(bucketName).collections();
+            var scopes = collectionManager.getAllScopes();
+
+            var adminScopeOpt = scopes.stream()
+                .filter(scope -> "Admin".equals(scope.name()))
+                .findFirst();
+
+            if (adminScopeOpt.isEmpty()) {
+                return false;
+            }
+
+            Set<String> expected = new HashSet<>(List.of("config", "users", "tokens", "clients", "cache", "bulk_groups"));
+            Set<String> existing = adminScopeOpt.get().collections().stream()
+                .map(CollectionSpec::name)
+                .collect(Collectors.toSet());
+
+            return existing.containsAll(expected);
+        } catch (Exception e) {
+            logger.warn("⚠️ Failed to check Admin initialization for bucket '{}': {}", bucketName, e.getMessage());
+            return false;
+        }
     }
     
     /**
