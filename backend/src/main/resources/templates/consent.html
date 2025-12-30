@@ -44,16 +44,37 @@
         margin-bottom: 8px;
       }
 
-      /* App info styles removed - now integrated into header */
+      .app-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border-left: 4px solid #667eea;
+      }
 
-      .user-info {
+      .app-info h2 {
+        font-size: 18px;
+        color: #333;
+        margin-bottom: 8px;
+      }
+
+      .app-info p {
         font-size: 14px;
         color: #666;
-        margin-top: 8px;
+      }
+
+      .user-info {
+        text-align: center;
+        padding: 12px;
+        background: #e3f2fd;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #1565c0;
       }
 
       .user-info strong {
-        color: #333;
+        color: #0d47a1;
       }
 
       .scopes-section {
@@ -217,9 +238,21 @@
   <body>
     <div class="consent-container">
       <div class="consent-header">
-        <h1>Authorize <span th:text="${clientName}">Application</span></h1>
-        <p class="user-info">
-          User: <strong th:text="${principalName}">user@example.com</strong>
+        <h1>Authorize Application</h1>
+      </div>
+
+      <div class="user-info">
+        Logged in as:
+        <strong th:text="${principalName}">user@example.com</strong>
+      </div>
+
+      <div class="app-info">
+        <h2 th:text="${clientName}">Application Name</h2>
+        <p th:if="${clientUri}">
+          Publisher:
+          <a th:href="${clientUri}" th:text="${clientUri}" target="_blank"
+            >https://example.com</a
+          >
         </p>
       </div>
 
@@ -256,47 +289,43 @@
       </div>
 
       <form method="post" th:action="@{/oauth2/authorize}">
-        <!-- CSRF token required by Spring Security -->
-        <input
-          type="hidden"
-          th:name="${_csrf.parameterName}"
-          th:value="${_csrf.token}"
-        />
-
-        <!-- Required by Spring Authorization Server -->
         <input type="hidden" name="client_id" th:value="${client_id}" />
         <input type="hidden" name="state" th:value="${state}" />
         <input
           type="hidden"
-          name="redirect_uri"
-          th:value="${redirect_uri}"
-          th:if="${redirect_uri != null}"
+          name="scope"
+          th:value="${scopeString}"
+          id="finalScope"
         />
-        <input
-          type="hidden"
-          name="response_type"
-          th:value="${response_type}"
-          th:if="${response_type != null}"
-        />
+        <input type="hidden" name="redirect_uri" th:value="${redirect_uri}" />
+        <input type="hidden" name="response_type" th:value="${response_type}" />
         <input
           type="hidden"
           name="code_challenge"
           th:value="${code_challenge}"
-          th:if="${code_challenge != null}"
         />
         <input
           type="hidden"
           name="code_challenge_method"
           th:value="${code_challenge_method}"
-          th:if="${code_challenge_method != null}"
         />
 
-        <!-- Dynamic scope field updated by JavaScript based on user selection -->
-        <input type="hidden" id="finalScope" name="scope" value="" />
-
         <div class="actions">
-          <button type="submit" name="cancel" class="btn-deny">Deny</button>
-          <button type="submit" class="btn-approve" id="approveBtn">
+          <button
+            type="submit"
+            name="consent_action"
+            value="deny"
+            class="btn-deny"
+          >
+            Deny
+          </button>
+          <button
+            type="submit"
+            name="consent_action"
+            value="approve"
+            class="btn-approve"
+            id="approveBtn"
+          >
             Approve Selected Permissions
           </button>
         </div>
