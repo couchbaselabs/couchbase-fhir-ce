@@ -530,11 +530,22 @@ public class AuthorizationServerConfig {
 
     /**
      * Authorization Server settings (endpoint URLs)
-     * Uses base URL from config.yaml (app.baseUrl)
+     * Uses base URL from config.yaml (loaded as system property by ConfigurationStartupService)
+     * @DependsOn ensures config.yaml is loaded before this bean is created
      */
     @Bean
-    public AuthorizationServerSettings authorizationServerSettings(
-        @Value("${app.baseUrl}") String configBaseUrl) {
+    @org.springframework.context.annotation.DependsOn("configurationStartupService")
+    public AuthorizationServerSettings authorizationServerSettings() {
+        // Get issuer from system property (set by config.yaml) or fall back to environment variable
+        String configBaseUrl = System.getProperty("app.baseUrl");
+        if (configBaseUrl == null || configBaseUrl.isEmpty()) {
+            configBaseUrl = System.getenv("APP_BASE_URL");
+        }
+        if (configBaseUrl == null || configBaseUrl.isEmpty()) {
+            configBaseUrl = "http://localhost:8080/fhir"; // Last resort fallback
+            logger.warn("⚠️  No app.baseUrl found in system properties or environment, using fallback: {}", configBaseUrl);
+        }
+        
         // Extract issuer by removing the /fhir path while preserving the full host:port
         String issuer = configBaseUrl;
         if (issuer.endsWith("/fhir")) {

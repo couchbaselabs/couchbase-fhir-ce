@@ -49,10 +49,10 @@ public class SmartConfigurationController {
     public ResponseEntity<Map<String, Object>> getSmartConfiguration(HttpServletRequest req) {
         logger.debug("🔍 SMART configuration requested");
 
-        // Determine base URL: prefer environment (Docker), then system property, then configured app.baseUrl, then derive from request
-        String baseUrl = System.getenv("APP_BASE_URL");
+        // Determine base URL: prefer system property (from config.yaml), then environment (Docker), then configured app.baseUrl, then derive from request
+        String baseUrl = System.getProperty("app.baseUrl", "");
         if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = System.getProperty("app.baseUrl", "");
+            baseUrl = System.getenv("APP_BASE_URL");
         }
         if ((baseUrl == null || baseUrl.isEmpty()) && appBaseUrl != null && !appBaseUrl.isBlank()) {
             baseUrl = appBaseUrl;
