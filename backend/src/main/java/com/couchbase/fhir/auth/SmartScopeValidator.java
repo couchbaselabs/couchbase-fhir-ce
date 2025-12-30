@@ -38,6 +38,8 @@ public class SmartScopeValidator {
         
         // Extract scopes from JWT
         List<String> scopes = extractScopes(authentication);
+        logger.debug("🔍 [SCOPE-VALIDATOR] Checking permission for {}.{} with scopes: {}", resourceType, operation, scopes);
+        
         if (scopes == null || scopes.isEmpty()) {
             // No SMART scopes found — consider ROLE_ authorities as fallback
             logger.debug("No SCOPE_ authorities found; checking ROLE_ authorities as fallback");
@@ -57,24 +59,37 @@ public class SmartScopeValidator {
             return false;
         }
         
-        // Parse scopes and check for permission
-        boolean hasPermission = scopes.stream()
+        // Parse scopes and check for permission, with diagnostics of matched scopes
+        List<SmartScopes.SmartScope> parsedScopes = scopes.stream()
             .map(SmartScopes::parse)
             .filter(scope -> scope != null)
+            .collect(Collectors.toList());
+
+        boolean hasPermission = parsedScopes.stream()
             .anyMatch(scope -> scope.matches(resourceType, operation));
+
+        if (!parsedScopes.isEmpty()) {
+            List<String> matched = parsedScopes.stream()
+                .filter(scope -> scope.matches(resourceType, operation))
+                .map(SmartScopes.SmartScope::getOriginalScope)
+                .collect(Collectors.toList());
+            logger.debug("🔍 [SCOPE-VALIDATOR] Matched scopes for {}.{}: {}", resourceType, operation, matched);
+        }
+        
+        logger.debug("🔍 [SCOPE-VALIDATOR] Scope matching result for {}.{}: {}", resourceType, operation, hasPermission);
         
         if (!hasPermission) {
             logger.debug("No matching SMART scope found for {}.{}; attempting ROLE_ based fallback", resourceType, operation);
 
             // If any ROLE_ authority grants the operation for the resource, allow it
             if (roleAllows(authentication, resourceType, operation)) {
-                logger.info("Access granted by ROLE_ authority for {}.{}", resourceType, operation);
+                logger.warn("⚠️ [SCOPE-VALIDATOR] Access granted by ROLE_ authority fallback for {}.{} - this bypasses OAuth scopes!", resourceType, operation);
                 return true;
             }
 
             // Admin role as final fallback
             if (hasAdminRole(authentication)) {
-                logger.info("Access granted by admin role for {}.{}", resourceType, operation);
+                logger.warn("⚠️ [SCOPE-VALIDATOR] Access granted by admin role fallback for {}.{} - this bypasses OAuth scopes!", resourceType, operation);
                 return true;
             }
 
@@ -83,7 +98,7 @@ public class SmartScopeValidator {
             logger.debug("Available scopes: {}", scopes);
             return false;
         } else {
-            logger.debug("Access granted for {}.{} with scopes: {}", resourceType, operation, scopes);
+            logger.debug("✅ [SCOPE-VALIDATOR] Access granted for {}.{} with matching SMART scope", resourceType, operation);
             return true;
         }
     }

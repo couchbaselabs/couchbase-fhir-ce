@@ -278,8 +278,21 @@
         </div>
 
         <div class="actions">
-          <button type="submit" name="cancel" class="btn-deny">Deny</button>
-          <button type="submit" class="btn-approve" id="approveBtn">
+          <button
+            type="submit"
+            name="consent_action"
+            value="cancel"
+            class="btn-deny"
+          >
+            Deny
+          </button>
+          <button
+            type="submit"
+            name="consent_action"
+            value="approve"
+            class="btn-approve"
+            id="approveBtn"
+          >
             Approve Selected Permissions
           </button>
         </div>
@@ -434,10 +447,11 @@
       }
 
       function updateSelectedScopes() {
-        // This function updates the visual display but doesn't modify form submission
-        // The hidden checkboxes (created server-side) handle the actual submission
-        const checkboxes = document.querySelectorAll(".scope-checkbox:checked");
-        const selectedPatientScopes = Array.from(checkboxes).map(
+        // Get selected patient scopes from visual checkboxes
+        const visualCheckboxes = document.querySelectorAll(
+          ".scope-checkbox:checked"
+        );
+        const selectedPatientScopes = Array.from(visualCheckboxes).map(
           (cb) => cb.value
         );
 
@@ -447,8 +461,15 @@
           ...selectedPatientScopes,
         ];
 
-        // Note: We don't have a #finalScope field in this version
-        // Spring Authorization Server uses the hidden checkboxes instead
+        // Update hidden form checkboxes to match user selection
+        const hiddenCheckboxes = document.querySelectorAll(
+          'input[name="scope"][type="checkbox"]'
+        );
+
+        hiddenCheckboxes.forEach((checkbox) => {
+          // Check if this scope is in the selected list
+          checkbox.checked = allSelectedScopes.includes(checkbox.value);
+        });
       }
 
       // Initialize on page load

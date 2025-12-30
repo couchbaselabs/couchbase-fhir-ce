@@ -93,7 +93,7 @@ public class AuthorizationServerConfig {
      * 4. On next restart, load the persisted key
      */
     public void initializeSigningKey() {
-        logger.info("🔐 Initializing OAuth signing key...");
+        logger.debug("🔐 Initializing OAuth signing key...");
         
         // Try to load existing key from bucket (if initialized)
         if (isConfigCollectionAvailable()) {
@@ -329,6 +329,8 @@ public class AuthorizationServerConfig {
                     
                     // Convert scopes to space-separated string (OAuth 2.0 standard)
                     String scopeString = String.join(" ", context.getAuthorizedScopes());
+                    logger.debug("🎫 [TOKEN-CUSTOMIZER] Creating access token with authorized scopes: {}", context.getAuthorizedScopes());
+                    logger.debug("🎫 [TOKEN-CUSTOMIZER] Scope string in JWT: {}", scopeString);
                     context.getClaims().claim("scope", scopeString);
                 }
                 
@@ -442,7 +444,7 @@ public class AuthorizationServerConfig {
             logger.debug("Collection existence check error: {}", e.getMessage());
         }
         if (!(bucketOk && scopeOk && collectionOk)) {
-            logger.info("OAuth JWK collection unavailable (bucketOk={} scopeOk={} collectionOk={})", bucketOk, scopeOk, collectionOk);
+            logger.warn("OAuth JWK collection unavailable (bucketOk={} scopeOk={} collectionOk={})", bucketOk, scopeOk, collectionOk);
         }
         return bucketOk && scopeOk && collectionOk;
     }
@@ -482,7 +484,7 @@ public class AuthorizationServerConfig {
                 var altDocs = altResult.rowsAs(JsonObject.class);
                 if (!altDocs.isEmpty() && altDocs.get(0) != null) {
                     doc = altDocs.get(0);
-                    logger.info("[JWK-LOAD] Alternate query succeeded; continuing with loaded document.");
+                    logger.debug("[JWK-LOAD] Alternate query succeeded; continuing with loaded document.");
                 } else {
                     var rawRows = queryResult.rowsAs(String.class);
                     logger.warn("❌ First row still null after alternate query. originalRawRowsSize={} originalRawRows={} altRowsSize={} altRows={}", rawRows.size(), rawRows, altDocs.size(), altResult.rowsAs(String.class));
@@ -552,7 +554,7 @@ public class AuthorizationServerConfig {
             issuer = issuer.substring(0, issuer.length() - 5); // Remove last 5 chars: "/fhir"
         }
         
-        logger.info("🔐 OAuth Authorization Server issuer: {}", issuer);
+        logger.debug("🔐 OAuth Authorization Server issuer: {}", issuer);
         
         return AuthorizationServerSettings.builder()
                 .issuer(issuer) // Uses base URL from config.yaml

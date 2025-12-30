@@ -182,7 +182,7 @@ public class SmartScopes {
         public boolean matches(String requestedResourceType, String requestedAction) {
             // Check resource type match (must match explicitly or be wildcard)
             boolean resourceMatches = isWildcardResource() || 
-                                     resourceType.equals(requestedResourceType);
+                                     (resourceType != null && requestedResourceType != null && resourceType.equalsIgnoreCase(requestedResourceType));
             
             logger.trace("[SCOPE-MATCH] Checking scope '{}' against resource={}, action={} - resourceMatches={}", 
                         originalScope, requestedResourceType, requestedAction, resourceMatches);

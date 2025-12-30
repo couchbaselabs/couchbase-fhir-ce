@@ -111,7 +111,21 @@ public class SmartAuthorizationInterceptor {
         
         // Determine if this is a read or write operation
         String operation = determineOperation(operationType);
-        
+
+        // Fallback: some HAPI phases may have null RestOperationTypeEnum, infer from HTTP method
+        if (operation == null) {
+            String method = String.valueOf(theRequestDetails.getRequestType()); // e.g., GET, POST
+            if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
+                operation = "read";
+            } else if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)
+                    || "PATCH".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method)) {
+                operation = "write";
+            }
+            if (operation != null) {
+                logger.debug("🔧 [SMART-AUTH] Inferred operation '{}' from HTTP method {} due to null RestOperationTypeEnum", operation, method);
+            }
+        }
+
         if (operation == null) {
             logger.debug("ℹ️ Skipping authorization for operation: {} (not a resource operation)", operationType);
             return;
