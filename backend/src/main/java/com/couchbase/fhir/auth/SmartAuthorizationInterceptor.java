@@ -115,12 +115,19 @@ public class SmartAuthorizationInterceptor {
         // Fallback: some HAPI phases may have null RestOperationTypeEnum, infer from HTTP method
         if (operation == null) {
             String method = String.valueOf(theRequestDetails.getRequestType()); // e.g., GET, POST
-            if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
+
+            // Special-case: POST .../_search is a SEARCH (read) per FHIR spec
+            String pathForInference = theRequestDetails.getRequestPath();
+            if ("POST".equalsIgnoreCase(method) && pathForInference != null && pathForInference.contains("/_search")) {
+                operation = "read";
+                logger.debug("🔧 [SMART-AUTH] Treating POST to _search as READ (path={})", pathForInference);
+            } else if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
                 operation = "read";
             } else if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)
                     || "PATCH".equalsIgnoreCase(method) || "DELETE".equalsIgnoreCase(method)) {
                 operation = "write";
             }
+
             if (operation != null) {
                 logger.debug("🔧 [SMART-AUTH] Inferred operation '{}' from HTTP method {} due to null RestOperationTypeEnum", operation, method);
             }

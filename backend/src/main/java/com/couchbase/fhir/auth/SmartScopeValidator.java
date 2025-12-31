@@ -41,21 +41,8 @@ public class SmartScopeValidator {
         logger.debug("🔍 [SCOPE-VALIDATOR] Checking permission for {}.{} with scopes: {}", resourceType, operation, scopes);
         
         if (scopes == null || scopes.isEmpty()) {
-            // No SMART scopes found — consider ROLE_ authorities as fallback
-            logger.debug("No SCOPE_ authorities found; checking ROLE_ authorities as fallback");
-            if (hasAdminRole(authentication)) {
-                logger.info("Access granted by admin role for {}.{}", resourceType, operation);
-                return true;
-            }
-
-            // Try role-based heuristics
-            if (roleAllows(authentication, resourceType, operation)) {
-                logger.info("Access granted by ROLE_ authority for {}.{}", resourceType, operation);
-                return true;
-            }
-
-            logger.warn("No scopes found in authentication for resourceType: {}, operation: {}", 
-                       resourceType, operation);
+            // No SMART scopes found — deny
+            logger.warn("No SMART scopes found in authentication for {}.{}, denying access", resourceType, operation);
             return false;
         }
         
@@ -79,20 +66,6 @@ public class SmartScopeValidator {
         logger.debug("🔍 [SCOPE-VALIDATOR] Scope matching result for {}.{}: {}", resourceType, operation, hasPermission);
         
         if (!hasPermission) {
-            logger.debug("No matching SMART scope found for {}.{}; attempting ROLE_ based fallback", resourceType, operation);
-
-            // If any ROLE_ authority grants the operation for the resource, allow it
-            if (roleAllows(authentication, resourceType, operation)) {
-                logger.warn("⚠️ [SCOPE-VALIDATOR] Access granted by ROLE_ authority fallback for {}.{} - this bypasses OAuth scopes!", resourceType, operation);
-                return true;
-            }
-
-            // Admin role as final fallback
-            if (hasAdminRole(authentication)) {
-                logger.warn("⚠️ [SCOPE-VALIDATOR] Access granted by admin role fallback for {}.{} - this bypasses OAuth scopes!", resourceType, operation);
-                return true;
-            }
-
             logger.warn("Access denied: No matching scope or role found for resource: {}, operation: {}", 
                        resourceType, operation);
             logger.debug("Available scopes: {}", scopes);
@@ -148,9 +121,7 @@ public class SmartScopeValidator {
      */
     public boolean hasPatientScope(Authentication authentication) {
         List<String> scopes = extractScopes(authentication);
-        if (scopes != null && scopes.stream().anyMatch(s -> s.startsWith("patient/"))) return true;
-        // fallback: if admin role present, treat as patient-scoped access
-        return hasAdminRole(authentication);
+        return scopes != null && scopes.stream().anyMatch(s -> s.startsWith("patient/"));
     }
     
     /**
@@ -158,8 +129,7 @@ public class SmartScopeValidator {
      */
     public boolean hasUserScope(Authentication authentication) {
         List<String> scopes = extractScopes(authentication);
-        if (scopes != null && scopes.stream().anyMatch(s -> s.startsWith("user/"))) return true;
-        return hasAdminRole(authentication);
+        return scopes != null && scopes.stream().anyMatch(s -> s.startsWith("user/"));
     }
     
     /**
@@ -167,62 +137,7 @@ public class SmartScopeValidator {
      */
     public boolean hasSystemScope(Authentication authentication) {
         List<String> scopes = extractScopes(authentication);
-        if (scopes != null && scopes.stream().anyMatch(s -> s.startsWith("system/"))) return true;
-        return hasAdminRole(authentication);
-    }
-
-    /**
-     * Check for admin-like ROLE_ authorities. This treats roles containing "admin"
-     * (case-insensitive) as a shortcut to grant broad access.
-     */
-    private boolean hasAdminRole(Authentication authentication) {
-        if (authentication == null || authentication.getAuthorities() == null) return false;
-        return authentication.getAuthorities().stream()
-            .map(a -> a.getAuthority())
-            .filter(auth -> auth != null && auth.startsWith("ROLE_"))
-            .map(auth -> auth.substring(5))
-            .anyMatch(role -> role.toLowerCase().contains("admin"));
-    }
-
-    /**
-     * Inspect ROLE_ authorities heuristically to see if any grant the requested
-     * resource/operation. This is a best-effort fallback for Keycloak roles which
-     * may encode resource-level privileges.
-     */
-    private boolean roleAllows(Authentication authentication, String resourceType, String operation) {
-        if (authentication == null || authentication.getAuthorities() == null) return false;
-
-        String resourceLower = resourceType == null ? "" : resourceType.toLowerCase();
-        String opLower = operation == null ? "" : operation.toLowerCase();
-
-        return authentication.getAuthorities().stream()
-            .map(a -> a.getAuthority())
-            .filter(auth -> auth != null && auth.startsWith("ROLE_"))
-            .map(auth -> auth.substring(5))
-            .map(String::toLowerCase)
-            .anyMatch(role -> {
-                // Wildcard / all granting roles
-                if (role.contains("*") || role.contains("all") || role.contains("cruds") || role.contains("crud")) return true;
-
-                // If role name contains the resource name and an op hint, allow
-                if (!resourceLower.isBlank() && role.contains(resourceLower)) {
-                    if (opLower.contains("read") || opLower.equals("r")) {
-                        if (role.contains("read") || role.contains("view") || role.contains("r")) return true;
-                    }
-                    if (opLower.contains("write") || opLower.equals("w") || opLower.equals("update") || opLower.equals("create") || opLower.equals("delete")) {
-                        if (role.contains("write") || role.contains("update") || role.contains("create") || role.contains("delete") || role.contains("cud")) return true;
-                    }
-                    // If role mentions the resource but no op, treat as general access
-                    if (!(role.contains("read") || role.contains("write") || role.contains("update") || role.contains("create") || role.contains("delete"))) {
-                        return true;
-                    }
-                }
-
-                // Generic fhir roles
-                if (role.contains("fhir") && (opLower.contains("read") || opLower.contains("r"))) return true;
-
-                return false;
-            });
+        return scopes != null && scopes.stream().anyMatch(s -> s.startsWith("system/"));
     }
     
     /**
