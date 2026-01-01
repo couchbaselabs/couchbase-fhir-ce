@@ -25,6 +25,8 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Map;
+import java.util.Arrays;
 import com.couchbase.fhir.resources.repository.FhirResourceDaoImpl;
 
 /**
@@ -169,10 +171,17 @@ public class SmartAuthorizationInterceptor {
         // Patient-scope filtering - ENFORCE patient context
         if (scopeValidator.hasPatientScope(authentication)) {
             String patientContext = scopeValidator.getPatientContext(authentication);
+            logger.info("🔍 [PATIENT-CONTEXT] hasPatientScope=true, patientContext={}, resourceType={}, inferredOp={}, enumOp={}", 
+                       patientContext, resourceType, operation, operationType);
             if (patientContext != null) {
-                logger.debug("📋 Patient-scoped request: enforcing patient context {}", patientContext);
-                enforcePatientContext(theRequestDetails, resourceType, operationType, patientContext);
+                logger.info("📋 [PATIENT-CONTEXT] Enforcing patient context {} for {}", patientContext, resourceType);
+                // Pass BOTH the enum (may be null) and the inferred operation string
+                enforcePatientContext(theRequestDetails, resourceType, operationType, operation, patientContext);
+            } else {
+                logger.warn("⚠️ [PATIENT-CONTEXT] Patient scope detected but patientContext is NULL!");
             }
+        } else {
+            logger.info("🔍 [PATIENT-CONTEXT] hasPatientScope=false, skipping patient context enforcement");
         }
         
         // User-scope filtering - TODO: Implement provider/clinician context enforcement
@@ -346,26 +355,68 @@ public class SmartAuthorizationInterceptor {
      * 
      * @param requestDetails HAPI FHIR request details
      * @param resourceType Resource type being accessed
-     * @param operationType Type of operation
+     * @param operationType Type of operation (may be null)
+     * @param inferredOperation Inferred operation string ("read" or "write", never null)
      * @param patientContext Patient ID from JWT token
      */
     private void enforcePatientContext(RequestDetails requestDetails, String resourceType, 
-                                       RestOperationTypeEnum operationType, String patientContext) {
+                                       RestOperationTypeEnum operationType, String inferredOperation, 
+                                       String patientContext) {
+        
+        logger.info("🔐 [ENFORCE-PATIENT] Called with: resourceType={}, operationType={}, inferredOp={}, patientContext={}", 
+                   resourceType, operationType, inferredOperation, patientContext);
+        
+        // Log all request parameters for debugging
+        Map<String, String[]> allParams = requestDetails.getParameters();
+        logger.info("🔐 [ENFORCE-PATIENT] Request parameters: {}", allParams.keySet());
+        for (Map.Entry<String, String[]> entry : allParams.entrySet()) {
+            logger.info("🔐 [ENFORCE-PATIENT]   {}={}", entry.getKey(), Arrays.toString(entry.getValue()));
+        }
+        
+        // Determine if this is a READ or SEARCH operation
+        boolean isDirectRead = false;
+        boolean isSearch = false;
+        
+        if (operationType != null) {
+            // Use enum if available
+            isDirectRead = (operationType == RestOperationTypeEnum.READ || operationType == RestOperationTypeEnum.VREAD);
+            isSearch = (operationType == RestOperationTypeEnum.SEARCH_TYPE);
+        } else {
+            // Fall back to inferred operation + request characteristics
+            if ("read".equals(inferredOperation)) {
+                String resourceId = requestDetails.getId() != null ? requestDetails.getId().getIdPart() : null;
+                boolean hasSearchParams = allParams != null && !allParams.isEmpty();
+                
+                if (resourceId != null && !hasSearchParams) {
+                    isDirectRead = true;
+                    logger.info("🔐 [ENFORCE-PATIENT] Inferred: Direct READ (has resourceId={}, no search params)", resourceId);
+                } else if (hasSearchParams) {
+                    isSearch = true;
+                    logger.info("🔐 [ENFORCE-PATIENT] Inferred: SEARCH (has search params)");
+                } else {
+                    isSearch = true; // Default to search for GET requests without ID
+                    logger.info("🔐 [ENFORCE-PATIENT] Inferred: SEARCH (default for GET without resourceId)");
+                }
+            }
+        }
         
         // For direct reads: GET /fhir/Patient/{id}
-        if (operationType == RestOperationTypeEnum.READ || operationType == RestOperationTypeEnum.VREAD) {
+        if (isDirectRead) {
             String resourceId = requestDetails.getId() != null ? requestDetails.getId().getIdPart() : null;
+            logger.info("🔐 [ENFORCE-PATIENT] Direct READ detected: resourceId={}", resourceId);
             
             if (resourceType.equals("Patient")) {
                 // Direct Patient read - must match token's patient context
                 if (resourceId != null && !resourceId.equals(patientContext)) {
-                    logger.warn("🚫 Patient-scoped token attempted to access Patient/{} (token patient: {})", 
+                    logger.warn("🚫 [ENFORCE-PATIENT] BLOCKING Patient read: resourceId={}, required={}", 
                                resourceId, patientContext);
                     throw new AuthenticationException(
                         String.format("Access denied: patient-scoped token can only access Patient/%s", patientContext)
                     );
                 }
+                logger.info("✅ [ENFORCE-PATIENT] Patient read ALLOWED: resourceId matches patientContext");
             } else {
+                logger.warn("⚠️ [ENFORCE-PATIENT] Non-Patient direct read - no compartment validation yet!");
                 // Other resource types: validate subject/patient reference
                 // This will be checked in a post-processing hook if needed
                 // For now, we'll validate in SEARCH operations below
@@ -373,32 +424,42 @@ public class SmartAuthorizationInterceptor {
         }
         
         // For searches: GET /fhir/Patient?_id=xyz or GET /fhir/Observation?patient=xyz
-        if (operationType == RestOperationTypeEnum.SEARCH_TYPE) {
+        if (isSearch) {
+            logger.info("🔐 [ENFORCE-PATIENT] SEARCH detected for {}", resourceType);
             // Check if searching for Patient resources
             if (resourceType.equals("Patient")) {
                 // Get _id search parameter
                 String[] idParams = requestDetails.getParameters().get("_id");
+                logger.info("🔐 [ENFORCE-PATIENT] Patient search: _id params={}", 
+                           idParams != null ? Arrays.toString(idParams) : "null");
+                
                 if (idParams != null && idParams.length > 0) {
                     for (String searchId : idParams) {
                         if (!searchId.equals(patientContext)) {
-                            logger.warn("🚫 Patient-scoped token attempted to search Patient?_id={} (token patient: {})", 
+                            logger.warn("🚫 [ENFORCE-PATIENT] BLOCKING Patient search: _id={}, required={}", 
                                        searchId, patientContext);
                             throw new AuthenticationException(
                                 String.format("Access denied: patient-scoped token can only search for Patient/%s", patientContext)
                             );
                         }
                     }
+                    logger.info("✅ [ENFORCE-PATIENT] Patient search ALLOWED: _id matches patientContext");
                 }
                 
                 // If no _id parameter, add it to enforce patient context
                 if (idParams == null || idParams.length == 0) {
-                    logger.debug("🔒 Adding patient context filter: _id={}", patientContext);
+                    logger.info("🔒 [ENFORCE-PATIENT] Adding patient context filter: _id={}", patientContext);
                     requestDetails.addParameter("_id", new String[]{patientContext});
                 }
             } else {
+                logger.info("🔐 [ENFORCE-PATIENT] Non-Patient search for {}", resourceType);
                 // For other resources (Observation, Condition, etc.), enforce patient parameter
                 String[] patientParams = requestDetails.getParameters().get("patient");
                 String[] subjectParams = requestDetails.getParameters().get("subject");
+                
+                logger.info("🔐 [ENFORCE-PATIENT] patient params={}, subject params={}", 
+                           patientParams != null ? Arrays.toString(patientParams) : "null",
+                           subjectParams != null ? Arrays.toString(subjectParams) : "null");
                 
                 // Check patient parameter
                 if (patientParams != null && patientParams.length > 0) {
@@ -408,14 +469,18 @@ public class SmartAuthorizationInterceptor {
                             ? searchPatient.substring("Patient/".length()) 
                             : searchPatient;
                         
+                        logger.info("🔐 [ENFORCE-PATIENT] Checking patient param: raw={}, normalized={}, required={}", 
+                                   searchPatient, patientId, patientContext);
+                        
                         if (!patientId.equals(patientContext)) {
-                            logger.warn("🚫 Patient-scoped token attempted to search {}?patient={} (token patient: {})", 
-                                       resourceType, patientId, patientContext);
+                            logger.warn("🚫 [ENFORCE-PATIENT] BLOCKING search: patient={}, required={}", 
+                                       patientId, patientContext);
                             throw new AuthenticationException(
                                 String.format("Access denied: patient-scoped token can only access patient %s", patientContext)
                             );
                         }
                     }
+                    logger.info("✅ [ENFORCE-PATIENT] Patient param validation PASSED");
                 }
                 
                 // Check subject parameter (some resources use subject instead of patient)
@@ -425,27 +490,31 @@ public class SmartAuthorizationInterceptor {
                             ? searchSubject.substring("Patient/".length()) 
                             : searchSubject;
                         
+                        logger.info("🔐 [ENFORCE-PATIENT] Checking subject param: raw={}, normalized={}, required={}", 
+                                   searchSubject, patientId, patientContext);
+                        
                         if (!patientId.equals(patientContext)) {
-                            logger.warn("🚫 Patient-scoped token attempted to search {}?subject={} (token patient: {})", 
-                                       resourceType, patientId, patientContext);
+                            logger.warn("🚫 [ENFORCE-PATIENT] BLOCKING search: subject={}, required={}", 
+                                       patientId, patientContext);
                             throw new AuthenticationException(
                                 String.format("Access denied: patient-scoped token can only access patient %s", patientContext)
                             );
                         }
                     }
+                    logger.info("✅ [ENFORCE-PATIENT] Subject param validation PASSED");
                 }
                 
                 // If neither patient nor subject is specified, we need to add patient filter
                 // This ensures compartment-based access
                 if ((patientParams == null || patientParams.length == 0) && 
                     (subjectParams == null || subjectParams.length == 0)) {
-                    logger.debug("🔒 Adding patient context filter: patient={}", patientContext);
+                    logger.info("🔒 [ENFORCE-PATIENT] Adding patient context filter: patient={}", patientContext);
                     requestDetails.addParameter("patient", new String[]{patientContext});
                 }
             }
         }
         
-        logger.debug("✅ Patient context enforcement passed for Patient/{}", patientContext);
+        logger.info("✅ [ENFORCE-PATIENT] Patient context enforcement completed for Patient/{}", patientContext);
     }
 }
 
