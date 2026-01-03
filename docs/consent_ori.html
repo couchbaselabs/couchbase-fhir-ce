@@ -256,64 +256,30 @@
       </div>
 
       <form method="post" th:action="@{/oauth2/authorize}">
-        <!-- th:action automatically adds CSRF token - no manual input needed -->
+        <!-- CSRF token required by Spring Security -->
+        <input
+          type="hidden"
+          th:name="${_csrf.parameterName}"
+          th:value="${_csrf.token}"
+        />
 
-        <!-- Required OAuth2 parameters - must match original authorization request -->
+        <!-- Required by Spring Authorization Server -->
         <input type="hidden" name="client_id" th:value="${client_id}" />
         <input type="hidden" name="state" th:value="${state}" />
-        <!-- Optional parameters - only include if present in original request -->
-        <input
-          type="hidden"
-          name="redirect_uri"
-          th:value="${redirect_uri}"
-          th:if="${redirect_uri != null and !#strings.isEmpty(redirect_uri)}"
-        />
-        <input
-          type="hidden"
-          name="response_type"
-          th:value="${response_type}"
-          th:if="${response_type != null and !#strings.isEmpty(response_type)}"
-        />
-        <input
-          type="hidden"
-          name="code_challenge"
-          th:value="${code_challenge}"
-          th:if="${code_challenge != null and !#strings.isEmpty(code_challenge)}"
-        />
-        <input
-          type="hidden"
-          name="code_challenge_method"
-          th:value="${code_challenge_method}"
-          th:if="${code_challenge_method != null and !#strings.isEmpty(code_challenge_method)}"
-        />
 
-        <!-- Patient context (if selected via patient picker) -->
-        <input
-          type="hidden"
-          name="patient_id"
-          th:value="${patient_id}"
-          th:if="${patient_id != null}"
-        />
-
-        <!-- Hidden field for scopes - use exact original order from server -->
-        <input type="hidden" name="scope" th:value="${scopeString}" />
+        <!-- Each scope needs to be a checkbox for Spring Authorization Server consent handling -->
+        <div th:each="scopeItem : ${scopes}" style="display: none">
+          <input
+            type="checkbox"
+            name="scope"
+            th:value="${scopeItem.scope}"
+            checked="checked"
+          />
+        </div>
 
         <div class="actions">
-          <button
-            type="submit"
-            name="consent_action"
-            value="cancel"
-            class="btn-deny"
-          >
-            Deny
-          </button>
-          <button
-            type="submit"
-            name="consent_action"
-            value="approve"
-            class="btn-approve"
-            id="approveBtn"
-          >
+          <button type="submit" name="cancel" class="btn-deny">Deny</button>
+          <button type="submit" class="btn-approve" id="approveBtn">
             Approve Selected Permissions
           </button>
         </div>
@@ -468,8 +434,20 @@
       }
 
       function updateSelectedScopes() {
-        // Scope order must match original request exactly
-        // No longer dynamically updating - using server's exact scopeString
+        const checkboxes = document.querySelectorAll(".scope-checkbox:checked");
+        const selectedPatientScopes = Array.from(checkboxes).map(
+          (cb) => cb.value
+        );
+
+        // Always include system scopes + selected patient scopes
+        const allSelectedScopes = [
+          ...(window.systemScopes || []),
+          ...selectedPatientScopes,
+        ];
+
+        // Update the hidden scope field with all selected scopes
+        document.getElementById("finalScope").value =
+          allSelectedScopes.join(" ");
       }
 
       // Initialize on page load

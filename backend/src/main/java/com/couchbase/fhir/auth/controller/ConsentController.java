@@ -1,12 +1,15 @@
 package com.couchbase.fhir.auth.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.oauth2.core.endpoint.OAuth2ParameterNames;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,14 +45,17 @@ public class ConsentController {
     public String consent(
             Principal principal,
             Model model,
+            HttpServletRequest request,
             HttpServletResponse response,
+            HttpSession session,
             @RequestParam(OAuth2ParameterNames.CLIENT_ID) String clientId,
             @RequestParam(OAuth2ParameterNames.SCOPE) String scope,
             @RequestParam(OAuth2ParameterNames.STATE) String state,
             @RequestParam(value = OAuth2ParameterNames.REDIRECT_URI, required = false) String redirectUri,
             @RequestParam(value = OAuth2ParameterNames.RESPONSE_TYPE, required = false, defaultValue = "code") String responseType,
             @RequestParam(value = "code_challenge", required = false) String codeChallenge,
-            @RequestParam(value = "code_challenge_method", required = false) String codeChallengeMethod) {
+            @RequestParam(value = "code_challenge_method", required = false) String codeChallengeMethod,
+            @RequestParam(value = "patient_id", required = false) String patientIdParam) {
         
         // Prevent browser from caching the consent page HTML
         response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
@@ -57,6 +63,61 @@ public class ConsentController {
         response.setHeader("Expires", "0");
         
         logger.info("🔐 Consent requested for client: {} by user: {}", clientId, principal.getName());
+        
+        // Recover missing parameters from SavedRequest (the original /oauth2/authorize request)
+        // IMPORTANT: Don't use getRequest() as it removes the SavedRequest from session!
+        // We need to keep it for Spring Authorization Server to process the POST
+        // NOTE: DO NOT override state - use the one from URL as it's for the current authorization attempt
+        SavedRequest savedRequest = (SavedRequest) session.getAttribute("SPRING_SECURITY_SAVED_REQUEST");
+        if (savedRequest != null) {
+            logger.debug("🔍 [CONSENT] Found SavedRequest, recovering missing OAuth parameters");
+            
+            // Recover redirect_uri if not in query params
+            if (redirectUri == null || redirectUri.isBlank()) {
+                String[] redirectValues = savedRequest.getParameterValues(OAuth2ParameterNames.REDIRECT_URI);
+                if (redirectValues != null && redirectValues.length > 0) {
+                    redirectUri = redirectValues[0];
+                    logger.debug("✅ [CONSENT] Recovered redirect_uri from SavedRequest: {}", redirectUri);
+                }
+            }
+            
+            // Recover code_challenge if not in query params (critical for PKCE!)
+            if (codeChallenge == null || codeChallenge.isBlank()) {
+                String[] challengeValues = savedRequest.getParameterValues("code_challenge");
+                if (challengeValues != null && challengeValues.length > 0) {
+                    codeChallenge = challengeValues[0];
+                    logger.debug("✅ [CONSENT] Recovered code_challenge from SavedRequest");
+                }
+            }
+            
+            // Recover code_challenge_method if not in query params
+            if (codeChallengeMethod == null || codeChallengeMethod.isBlank()) {
+                String[] methodValues = savedRequest.getParameterValues("code_challenge_method");
+                if (methodValues != null && methodValues.length > 0) {
+                    codeChallengeMethod = methodValues[0];
+                    logger.debug("✅ [CONSENT] Recovered code_challenge_method from SavedRequest: {}", codeChallengeMethod);
+                }
+            }
+        }
+        
+        logger.debug("🔍 [CONSENT] OAuth params: state={}, redirect_uri={}, response_type={}, code_challenge={}", 
+                    state, redirectUri, responseType, (codeChallenge != null ? "[present]" : "null"));
+        
+        // Get patient_id from request parameter (passed from patient picker) or session
+        String patientId = patientIdParam;
+        if (patientId == null) {
+            Object sessionPatientId = session.getAttribute("selected_patient_id");
+            if (sessionPatientId != null) {
+                patientId = sessionPatientId.toString();
+                logger.debug("🏥 [CONSENT] Found patient_id in session: {}", patientId);
+            }
+        } else {
+            logger.debug("🏥 [CONSENT] Found patient_id in request parameter: {}", patientId);
+        }
+        
+        if (patientId != null) {
+            logger.info("🏥 [CONSENT] Patient context for consent: {}", patientId);
+        }
         
         // Get client details
         RegisteredClient client = clientRepository.findByClientId(clientId);
@@ -91,6 +152,10 @@ public class ConsentController {
         model.addAttribute("response_type", responseType);
         model.addAttribute("code_challenge", codeChallenge);
         model.addAttribute("code_challenge_method", codeChallengeMethod);
+        model.addAttribute("patient_id", patientId);  // Pass patient context to consent form
+        
+        logger.debug("🔍 [CONSENT] Model attributes: state={}, patient_id={}, scopes={}", 
+                    state, patientId, scopeList.size());
         
         return "consent";
     }

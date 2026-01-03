@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Cache-Control"
+      content="no-store, no-cache, must-revalidate, max-age=0"
+    />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Login - Couchbase FHIR OAuth</title>
     <style>
       * {
@@ -133,10 +139,14 @@
         You have been logged out
       </div>
 
-      <form method="post" th:action="@{/login}">
+      <form method="post" th:action="${loginUrl != null ? loginUrl : '/login'}">
         <!-- CSRF token for Spring Security -->
-        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
-        
+        <input
+          type="hidden"
+          th:name="${_csrf.parameterName}"
+          th:value="${_csrf.token}"
+        />
+
         <div class="form-group">
           <label for="username">Username</label>
           <input

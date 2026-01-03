@@ -33,6 +33,9 @@ public class SecurityConfig {
     @Autowired
     private org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter jwtAuthenticationConverter;
 
+    @Autowired(required = false)
+    private com.couchbase.fhir.auth.SmartOAuthSuccessHandler smartOAuthSuccessHandler;
+
     @Value("${app.security.use-keycloak:false}")
     private boolean useKeycloak;
 
@@ -139,16 +142,31 @@ public class SecurityConfig {
                 // Permit internal /oauth2 endpoints only when the embedded Authorization Server is active
                 .requestMatchers("/oauth2/**").permitAll() // default allow; Security behavior will be controlled by bean presence
                 
-                // Allow login page and static resources
-                .requestMatchers("/login", "/error", "/css/**", "/js/**").permitAll()
+                // Allow login pages and static resources
+                // /login - legacy/general purpose (kept for compatibility)
+                // /oauth2/login - OAuth2 SMART app authentication
+                .requestMatchers("/login", "/oauth2/login", "/error", "/css/**", "/js/**").permitAll()
                 
                 // Allow all other requests (backwards compatibility)
                 .anyRequest().permitAll()
             )
             // Enable form login for OAuth authentication
-            // Uses SavedRequestAwareAuthenticationSuccessHandler to redirect back to original OAuth request
-            .formLogin(form -> form
-                .loginPage("/login")
+            // Use /oauth2/login to separate from admin UI login
+            // Use custom success handler if available (for SMART on FHIR patient picker routing)
+            .formLogin(form -> {
+                form.loginPage("/oauth2/login").permitAll();
+                if (smartOAuthSuccessHandler != null) {
+                    form.successHandler(smartOAuthSuccessHandler);
+                }
+            })
+            // Enforce no-cache headers for HTML endpoints
+            .headers(headers -> headers.cacheControl(org.springframework.security.config.Customizer.withDefaults()))
+            // Enable logout
+            .logout(logout -> logout
+                .logoutUrl("/logout")
+                .logoutSuccessUrl("/login?logout")
+                .invalidateHttpSession(true)
+                .deleteCookies("JSESSIONID")
                 .permitAll()
             );
         

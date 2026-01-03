@@ -3,6 +3,9 @@ spring:
     name: backend
   config:
     import: classpath:fhir.yml
+  # Thymeleaf template caching disabled for OAuth flows (prevents stale cached pages)
+  thymeleaf:
+    cache: false
   # Keycloak JWT configuration - only active when app.security.use-keycloak=true
   # KEYCLOAK_JWKS_URI is set via System.setProperty from config.yaml during startup
   security:
@@ -33,6 +36,7 @@ server:
     enabled: true
     mime-types: application/json,application/fhir+json,text/html,text/xml,text/plain,application/xml
     min-response-size: 1024
+  forward-headers-strategy: framework
   servlet:
     session:
       cookie:
@@ -75,11 +79,13 @@ server:
 logging:
   level:
     root: ERROR # Default to ERROR for all loggers
-    "[ca.uhn.fhir.rest.server.RestfulServer]": false
+    "[ca.uhn.fhir.rest.server.RestfulServer]": ERROR
     "[org.apache.catalina]": ERROR
-    "[org.apache.catalina.connector]": false
+    "[org.apache.catalina.connector]": ERROR
     "[org.springframework.security]": ERROR
     "[org.springframework.security.oauth2]": ERROR
+    "[org.springframework.security.web]": ERROR
+    "[org.springframework.security.oauth2.server.authorization]": ERROR
     "[org.springframework.web.servlet]": ERROR
     "[com.couchbase.transactions]": ERROR
     "[com.couchbase.fhir.auth.CustomJwtGrantedAuthoritiesConverter]": ERROR

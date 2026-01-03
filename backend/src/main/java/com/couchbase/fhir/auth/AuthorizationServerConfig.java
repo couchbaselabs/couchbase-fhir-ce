@@ -32,6 +32,7 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
@@ -75,7 +76,10 @@ public class AuthorizationServerConfig {
     private ConnectionService connectionService;
     
     @Autowired
-    private com.couchbase.fhir.auth.service.PatientContextService patientContextService;
+    private SmartOAuthSuccessHandler smartOAuthSuccessHandler;
+    
+    @Autowired
+    private com.couchbase.fhir.auth.filter.AuthorizeRequestLoggingFilter authorizeRequestLoggingFilter;
     
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -179,23 +183,39 @@ public class AuthorizationServerConfig {
             .oidc(Customizer.withDefaults())
             .authorizationEndpoint(authorization -> authorization
                 .consentPage("/consent")
+                .authorizationRequestConverter(new SmartAuthorizationRequestAuthenticationConverter())
             );
 
-        // Redirect to login page when not authenticated for HTML requests
+        // Configure request cache to preserve SavedRequest throughout the OAuth flow
+        // CRITICAL: Setting matchingRequestParameterName to null prevents the SavedRequest 
+        // from being removed after the first read, which is essential for SMART flows that 
+        // need to access OAuth parameters multiple times (SmartOAuthSuccessHandler → ConsentController → Spring Auth Server)
+        org.springframework.security.web.savedrequest.HttpSessionRequestCache requestCache = 
+            new org.springframework.security.web.savedrequest.HttpSessionRequestCache();
+        requestCache.setMatchingRequestParameterName(null);
+        http.requestCache(cache -> cache.requestCache(requestCache));
+        
+        // Redirect to OAuth login page when not authenticated for HTML requests
         http.exceptionHandling((exceptions) -> exceptions
                 .defaultAuthenticationEntryPointFor(
-                        new LoginUrlAuthenticationEntryPoint("/login"),
+                        new LoginUrlAuthenticationEntryPoint("/oauth2/login"),
                         new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
                 )
         );
         
         // Configure form login for OAuth authorization flow
-        // This ensures that after login, user is redirected back to the OAuth consent page
+        // Use custom success handler to intercept and redirect to patient picker if needed
+        // Use /oauth2/login to separate from admin login flow
         http.formLogin(form -> form
-                .loginPage("/login")
+                .loginPage("/oauth2/login")
+                .successHandler(smartOAuthSuccessHandler)
                 .permitAll()
         );
 
+        // Add logging for POST /oauth2/authorize
+        http.addFilterBefore(authorizeRequestLoggingFilter,
+            org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+        
         // Accept access tokens for User Info and/or Client Registration
         http.oauth2ResourceServer((oauth2) -> oauth2.jwt(Customizer.withDefaults()));
 
@@ -268,6 +288,20 @@ public class AuthorizationServerConfig {
     }
 
     /**
+     * Wrap the default OAuth2AuthorizationService to inject patient_id from session
+     * into the authorization attributes when the authorization code is issued.
+     */
+    @Bean
+    public OAuth2AuthorizationService authorizationService() {
+        // Create the default in-memory authorization service
+        org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService inMemoryService = 
+            new org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService();
+        
+        // Wrap it with our patient-context-aware service
+        return new PatientContextAwareAuthorizationService(inMemoryService);
+    }
+
+    /**
      * User details for OAuth authentication
      * 
      * IMPORTANT: This bean is intentionally NOT defined here.
@@ -334,17 +368,41 @@ public class AuthorizationServerConfig {
                     context.getClaims().claim("scope", scopeString);
                 }
                 
-                // Add fhirUser claim if user has a FHIR resource reference
+                // Check for patient_id injected by PatientContextAwareAuthorizationService
+                String selectedPatientId = null;
+                org.springframework.security.oauth2.server.authorization.OAuth2Authorization authorization = context.getAuthorization();
+                if (authorization != null) {
+                    logger.debug("🔍 [TOKEN-CUSTOMIZER] Checking OAuth2Authorization for patient_id...");
+                    
+                    // Read patient_id directly from attributes (injected when authorization was saved)
+                    Object patientIdAttr = authorization.getAttribute("patient_id");
+                    if (patientIdAttr != null) {
+                        selectedPatientId = patientIdAttr.toString();
+                        if (selectedPatientId.startsWith("Patient/")) {
+                            selectedPatientId = selectedPatientId.substring(8);
+                        }
+                        context.getClaims().claim("patient", selectedPatientId);
+                        logger.info("🏥 [TOKEN-CUSTOMIZER] Added patient claim '{}' from authorization attributes", selectedPatientId);
+                    } else {
+                        logger.debug("[TOKEN-CUSTOMIZER] No patient_id found in authorization attributes");
+                    }
+                } else {
+                    logger.warn("⚠️ [TOKEN-CUSTOMIZER] OAuth2Authorization is null!");
+                }
+                
+                // Always add fhirUser claim if user has a FHIR resource reference
+                // This is independent of patient context - practitioner can select a different patient
                 if (user != null && user.getFhirUser() != null && !user.getFhirUser().isEmpty()) {
                     String fhirUserRef = user.getFhirUser();
                     context.getClaims().claim("fhirUser", fhirUserRef);
+                    logger.debug("🎫 [TOKEN-CUSTOMIZER] Added fhirUser claim: {}", fhirUserRef);
                     
-                    // Add patient claim if user is a Patient resource
-                    // SMART spec: patient claim should be just the ID, not the full reference
-                    if (fhirUserRef.startsWith("Patient/")) {
+                    // ONLY add patient claim from fhirUser if no patient was selected via picker
+                    // (i.e., this is a patient standalone launch, not provider launch)
+                    if (selectedPatientId == null && fhirUserRef.startsWith("Patient/")) {
                         String patientId = fhirUserRef.substring(8); // Extract "example" from "Patient/example"
                         context.getClaims().claim("patient", patientId);
-                        logger.debug("Added patient claim '{}' for user {}", patientId, username);
+                        logger.debug("🎫 [TOKEN-CUSTOMIZER] Added patient claim '{}' from fhirUser (patient standalone launch)", patientId);
                     }
                 }
             }

@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Select Patient - Couchbase FHIR</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .picker-container {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        padding: 40px;
+        max-width: 1000px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      .picker-header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .picker-header h1 {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 8px;
+      }
+
+      .user-info {
+        font-size: 14px;
+        color: #666;
+        margin-top: 8px;
+      }
+
+      .user-info strong {
+        color: #333;
+      }
+
+      .search-section {
+        margin-bottom: 24px;
+      }
+
+      .search-box {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .search-input {
+        flex: 1;
+        padding: 12px 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+      }
+
+      .search-input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .btn-search {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+
+      .btn-search:hover {
+        background: #5568d3;
+      }
+
+      .search-help {
+        background: #e3f2fd;
+        border: 1px solid #2196f3;
+        border-radius: 6px;
+        padding: 12px;
+        font-size: 13px;
+        color: #1565c0;
+      }
+
+      .patients-section {
+        margin-bottom: 24px;
+      }
+
+      .patients-section h3 {
+        font-size: 16px;
+        color: #333;
+        margin-bottom: 16px;
+      }
+
+      .patients-table {
+        border-collapse: collapse;
+        width: 100%;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .patients-table th {
+        background: #667eea;
+        color: white;
+        padding: 16px 12px;
+        text-align: left;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .patients-table td {
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+        vertical-align: middle;
+      }
+
+      .patients-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .patients-table tbody tr {
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .patients-table tbody tr:hover {
+        background: #f0f4ff;
+      }
+
+      .patients-table tbody tr.selected {
+        background: #e8eeff;
+        border-left: 4px solid #667eea;
+      }
+
+      .patient-id {
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        color: #666;
+        background: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 3px;
+        display: inline-block;
+      }
+
+      .patient-name {
+        font-weight: 600;
+        color: #333;
+        font-size: 14px;
+      }
+
+      .patient-details {
+        font-size: 13px;
+        color: #666;
+        margin-top: 4px;
+      }
+
+      .deceased-badge {
+        background: #ff9800;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-block;
+        margin-left: 8px;
+      }
+
+      .no-patients {
+        text-align: center;
+        padding: 40px;
+        color: #666;
+      }
+
+      .no-patients p {
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+
+      .error-message {
+        background: #ffebee;
+        border: 1px solid #f44336;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 16px;
+        color: #c62828;
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding-top: 20px;
+      }
+
+      button {
+        flex: 1;
+        padding: 14px;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+
+      .btn-select {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .btn-select:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-select:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-cancel {
+        background: #6c757d;
+        color: white;
+      }
+
+      .btn-cancel:hover {
+        background: #5a6268;
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      @media (max-width: 768px) {
+        .picker-container {
+          padding: 20px;
+          margin: 10px;
+        }
+
+        .patients-table {
+          font-size: 12px;
+        }
+
+        .patients-table th,
+        .patients-table td {
+          padding: 8px;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="picker-container">
+      <div class="picker-header">
+        <h1>🏥 Select Patient</h1>
+        <p class="user-info">
+          Provider:
+          <strong th:text="${principalName}">practitioner@example.com</strong>
+        </p>
+      </div>
+
+      <!-- Search Section -->
+      <div class="search-section">
+        <form method="get" action="/patient-picker" id="searchForm">
+          <!-- Preserve OAuth parameters -->
+          <input type="hidden" name="client_id" th:value="${client_id}" />
+          <input type="hidden" name="scope" th:value="${scope}" />
+          <input type="hidden" name="state" th:value="${state}" />
+          <input type="hidden" name="redirect_uri" th:value="${redirect_uri}" />
+          <input
+            type="hidden"
+            name="response_type"
+            th:value="${response_type}"
+          />
+          <input
+            type="hidden"
+            name="code_challenge"
+            th:value="${code_challenge}"
+          />
+          <input
+            type="hidden"
+            name="code_challenge_method"
+            th:value="${code_challenge_method}"
+          />
+
+          <div class="search-box">
+            <input
+              type="text"
+              name="searchTerm"
+              class="search-input"
+              placeholder="Search by Patient ID (e.g., 'example' for Patient/example)"
+              th:value="${searchTerm}"
+            />
+            <button type="submit" class="btn-search">🔍 Search</button>
+          </div>
+        </form>
+
+        <div class="search-help">
+          <strong>💡 Tip:</strong> Enter a patient ID to search (e.g.,
+          "example"). Leave blank to see the first 10 patients.
+        </div>
+      </div>
+
+      <!-- Error Message -->
+      <div class="error-message" th:if="${error}">
+        <strong>Error:</strong>
+        <span th:text="${error}">An error occurred</span>
+      </div>
+
+      <!-- Patients Table -->
+      <div class="patients-section">
+        <h3>Available Patients:</h3>
+
+        <div class="no-patients" th:if="${patients.isEmpty()}">
+          <p>No patients found.</p>
+          <p th:if="${searchTerm != null and !searchTerm.isEmpty()}">
+            Try a different search term or leave it blank to see all patients.
+          </p>
+        </div>
+
+        <form
+          method="post"
+          action="/patient-picker"
+          id="patientForm"
+          th:if="${!patients.isEmpty()}"
+        >
+          <!-- CSRF token -->
+          <input
+            type="hidden"
+            th:name="${_csrf.parameterName}"
+            th:value="${_csrf.token}"
+          />
+
+          <!-- OAuth parameters -->
+          <input type="hidden" name="client_id" th:value="${client_id}" />
+          <input type="hidden" name="scope" th:value="${scope}" />
+          <input type="hidden" name="state" th:value="${state}" />
+          <input type="hidden" name="redirect_uri" th:value="${redirect_uri}" />
+          <input
+            type="hidden"
+            name="response_type"
+            th:value="${response_type}"
+          />
+          <input
+            type="hidden"
+            name="code_challenge"
+            th:value="${code_challenge}"
+          />
+          <input
+            type="hidden"
+            name="code_challenge_method"
+            th:value="${code_challenge_method}"
+          />
+
+          <!-- Selected patient ID -->
+          <input
+            type="hidden"
+            name="patient_id"
+            id="selectedPatientId"
+            value=""
+          />
+          <input type="hidden" name="action" id="formAction" value="select" />
+
+          <table class="patients-table">
+            <thead>
+              <tr>
+                <th>Patient ID</th>
+                <th>Name</th>
+                <th>Birth Date</th>
+                <th>Gender</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                th:each="patient : ${patients}"
+                th:data-patient-id="${patient.id}"
+                onclick="selectRow(this)"
+              >
+                <td>
+                  <span class="patient-id" th:text="${patient.id}"
+                    >Patient/example</span
+                  >
+                </td>
+                <td>
+                  <div class="patient-name" th:text="${patient.fullName}">
+                    John Doe
+                  </div>
+                  <span class="deceased-badge" th:if="${patient.deceased}"
+                    >Deceased</span
+                  >
+                </td>
+                <td th:text="${patient.birthDate}">1980-01-01</td>
+                <td th:text="${patient.gender}">male</td>
+              </tr>
+            </tbody>
+          </table>
+        </form>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="actions" th:if="${!patients.isEmpty()}">
+        <button type="button" class="btn-cancel" onclick="cancelSelection()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn-select"
+          id="selectBtn"
+          disabled
+          onclick="confirmSelection()"
+        >
+          Continue with Selected Patient
+        </button>
+      </div>
+    </div>
+
+    <script th:inline="javascript">
+      let selectedPatientId = null;
+
+      function selectRow(row) {
+        // Remove previous selection
+        const allRows = document.querySelectorAll(".patients-table tbody tr");
+        allRows.forEach((r) => r.classList.remove("selected"));
+
+        // Add selection to clicked row
+        row.classList.add("selected");
+
+        // Get patient ID
+        selectedPatientId = row.getAttribute("data-patient-id");
+        document.getElementById("selectedPatientId").value = selectedPatientId;
+
+        // Enable select button
+        document.getElementById("selectBtn").disabled = false;
+
+        console.log("Selected patient:", selectedPatientId);
+      }
+
+      function confirmSelection() {
+        if (!selectedPatientId) {
+          alert("Please select a patient first");
+          return;
+        }
+
+        document.getElementById("formAction").value = "select";
+        document.getElementById("patientForm").submit();
+      }
+
+      function cancelSelection() {
+        document.getElementById("formAction").value = "cancel";
+        document.getElementById("patientForm").submit();
+      }
+
+      // Initialize: if only one patient, auto-select it
+      document.addEventListener("DOMContentLoaded", function () {
+        const rows = document.querySelectorAll(".patients-table tbody tr");
+        if (rows.length === 1) {
+          selectRow(rows[0]);
+        }
+      });
+    </script>
+  </body>
+</html>

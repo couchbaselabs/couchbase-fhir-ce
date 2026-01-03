@@ -53,17 +53,21 @@ public class SmartTokenEnhancerFilter implements Filter {
 
         // Only intercept POST requests to token endpoint
         if ("POST".equalsIgnoreCase(method) && uri != null && uri.endsWith("/oauth2/token")) {
-            logger.debug("🎫 [SMART-ENHANCER] Intercepting token endpoint: {} {}", method, uri);
+            logger.info("🎫 [SMART-ENHANCER] *** INTERCEPTING token endpoint: {} {}", method, uri);
 
             ResponseCaptureWrapper responseWrapper = new ResponseCaptureWrapper(httpResponse);
             chain.doFilter(request, responseWrapper);
 
             byte[] responseData = responseWrapper.getCapturedData();
             String responseBody = new String(responseData, StandardCharsets.UTF_8);
+            
+            logger.info("🎫 [SMART-ENHANCER] *** Original response: {}", responseBody);
 
             try {
                 // Let the enhancer inspect and (optionally) modify the response
                 String enhanced = TokenResponseEnhancer.enhance(responseBody);
+                
+                logger.info("🎫 [SMART-ENHANCER] *** Enhanced response: {}", enhanced);
 
                 // Parse the (possibly enhanced) body to check for OAuth errors
                 @SuppressWarnings("unchecked")
@@ -94,7 +98,7 @@ public class SmartTokenEnhancerFilter implements Filter {
                 // If enhancer changed the body, return modified response
                 if (!enhanced.equals(responseBody)) {
                     byte[] out = enhanced.getBytes(StandardCharsets.UTF_8);
-                    logger.debug("✅ [SMART-ENHANCER] Token response enhanced ({} -> {} bytes)", responseBody.length(), out.length);
+                    logger.info("✅ [SMART-ENHANCER] *** Response MODIFIED ({} -> {} bytes)", responseBody.length(), out.length);
                     httpResponse.reset();
                     httpResponse.setStatus(HttpServletResponse.SC_OK);
                     httpResponse.setContentType("application/json");
@@ -105,6 +109,8 @@ public class SmartTokenEnhancerFilter implements Filter {
                     httpResponse.getOutputStream().write(out);
                     httpResponse.getOutputStream().flush();
                     return;
+                } else {
+                    logger.warn("⚠️ [SMART-ENHANCER] *** Response NOT modified (body unchanged)");
                 }
 
             } catch (Exception e) {
@@ -112,6 +118,7 @@ public class SmartTokenEnhancerFilter implements Filter {
             }
 
             // No enhancement applied or enhancer failed: forward original response (with security headers)
+            logger.info("🎫 [SMART-ENHANCER] *** Forwarding original response");
             httpResponse.setContentType("application/json");
             httpResponse.setCharacterEncoding("UTF-8");
             httpResponse.setContentLength(responseData.length);
@@ -119,6 +126,7 @@ public class SmartTokenEnhancerFilter implements Filter {
             httpResponse.setHeader("Pragma", "no-cache");
             httpResponse.getOutputStream().write(responseData);
             httpResponse.getOutputStream().flush();
+            return;
 
         } else {
             // Not a token endpoint - pass through
