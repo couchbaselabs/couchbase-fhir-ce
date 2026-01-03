@@ -261,6 +261,7 @@
         <!-- Required OAuth2 parameters - must match original authorization request -->
         <input type="hidden" name="client_id" th:value="${client_id}" />
         <input type="hidden" name="state" th:value="${state}" />
+        <!-- DO NOT include response_type in consent POST - it makes Spring think it's a new auth request -->
         <!-- Optional parameters - only include if present in original request -->
         <input
           type="hidden"
@@ -268,24 +269,7 @@
           th:value="${redirect_uri}"
           th:if="${redirect_uri != null and !#strings.isEmpty(redirect_uri)}"
         />
-        <input
-          type="hidden"
-          name="response_type"
-          th:value="${response_type}"
-          th:if="${response_type != null and !#strings.isEmpty(response_type)}"
-        />
-        <input
-          type="hidden"
-          name="code_challenge"
-          th:value="${code_challenge}"
-          th:if="${code_challenge != null and !#strings.isEmpty(code_challenge)}"
-        />
-        <input
-          type="hidden"
-          name="code_challenge_method"
-          th:value="${code_challenge_method}"
-          th:if="${code_challenge_method != null and !#strings.isEmpty(code_challenge_method)}"
-        />
+        <!-- DO NOT include PKCE params (code_challenge) in consent POST -->
 
         <!-- Patient context (if selected via patient picker) -->
         <input
@@ -295,8 +279,11 @@
           th:if="${patient_id != null}"
         />
 
-        <!-- Hidden field for scopes - use exact original order from server -->
-        <input type="hidden" name="scope" th:value="${scopeString}" />
+        <!-- Scopes - Submit each as a separate parameter for Spring Authorization Server consent -->
+        <!-- Spring expects: scope=openid&scope=fhirUser&scope=patient/*.rs (not space-separated) -->
+        <th:block th:each="scopeItem : ${scopes}">
+          <input type="hidden" name="scope" th:value="${scopeItem.scope}" />
+        </th:block>
 
         <div class="actions">
           <button

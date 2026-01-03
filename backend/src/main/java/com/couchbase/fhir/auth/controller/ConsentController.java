@@ -63,6 +63,9 @@ public class ConsentController {
         response.setHeader("Expires", "0");
         
         logger.info("🔐 Consent requested for client: {} by user: {}", clientId, principal.getName());
+        logger.info("🔍 [CONSENT] Received parameters: clientId={}, scope={}, state={}, redirectUri={}, responseType={}, codeChallenge={}, codeChallengeMethod={}, patientId={}",
+                   clientId, scope, state, redirectUri, responseType, 
+                   (codeChallenge != null ? "present" : "null"), codeChallengeMethod, patientIdParam);
         
         // Recover missing parameters from SavedRequest (the original /oauth2/authorize request)
         // IMPORTANT: Don't use getRequest() as it removes the SavedRequest from session!

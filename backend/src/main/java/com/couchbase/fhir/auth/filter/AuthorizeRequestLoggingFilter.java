@@ -24,21 +24,14 @@ public class AuthorizeRequestLoggingFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         if ("POST".equalsIgnoreCase(request.getMethod()) && 
             "/oauth2/authorize".equals(request.getRequestURI())) {
-            String[] csrfVals = request.getParameterValues("_csrf");
-            String[] clientIdVals = request.getParameterValues("client_id");
-            String[] stateVals = request.getParameterValues("state");
-            String[] scopeVals = request.getParameterValues("scope");
-            String[] consentVals = request.getParameterValues("consent_action");
-            String[] patientIdVals = request.getParameterValues("patient_id");
-            log.info("[AUTHZ-POST] _csrf count={} val={}", 
-                csrfVals == null ? 0 : csrfVals.length, 
-                csrfVals == null ? null : Arrays.toString(csrfVals));
-            log.info("[AUTHZ-POST] client_id={} state={} consent_action={}",
-                clientIdVals == null ? null : Arrays.toString(clientIdVals),
-                stateVals == null ? null : Arrays.toString(stateVals),
-                consentVals == null ? null : Arrays.toString(consentVals));
-            log.info("[AUTHZ-POST] scope(s)={}", scopeVals == null ? null : Arrays.toString(scopeVals));
-            log.info("[AUTHZ-POST] patient_id(s)={}", patientIdVals == null ? null : Arrays.toString(patientIdVals));
+            log.info("========== POST /oauth2/authorize ==========");
+            log.info("[AUTHZ-POST] ALL Parameters:");
+            request.getParameterMap().forEach((key, values) -> {
+                if (!key.equals("_csrf")) {  // Don't log CSRF token
+                    log.info("[AUTHZ-POST]   {}={}", key, Arrays.toString(values));
+                }
+            });
+            log.info("============================================");
         }
 
         if ("GET".equalsIgnoreCase(request.getMethod()) &&

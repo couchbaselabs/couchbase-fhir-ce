@@ -183,6 +183,7 @@ public class AuthorizationServerConfig {
             .oidc(Customizer.withDefaults())
             .authorizationEndpoint(authorization -> authorization
                 .consentPage("/consent")
+                // Converter for initial authorization request (GET) - captures patient_id
                 .authorizationRequestConverter(new SmartAuthorizationRequestAuthenticationConverter())
             );
 
@@ -302,6 +303,17 @@ public class AuthorizationServerConfig {
     }
 
     /**
+     * OAuth2 Authorization Consent Service
+     * Tracks consent state to prevent infinite redirect loops during consent flow.
+     * Without this, Spring generates a new consent state on every request.
+     */
+    @Bean
+    public org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationConsentService authorizationConsentService() {
+        // In-memory consent service - stores user consent decisions
+        return new org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationConsentService();
+    }
+
+    /**
      * User details for OAuth authentication
      * 
      * IMPORTANT: This bean is intentionally NOT defined here.
@@ -372,22 +384,25 @@ public class AuthorizationServerConfig {
                 String selectedPatientId = null;
                 org.springframework.security.oauth2.server.authorization.OAuth2Authorization authorization = context.getAuthorization();
                 if (authorization != null) {
-                    logger.debug("🔍 [TOKEN-CUSTOMIZER] Checking OAuth2Authorization for patient_id...");
+                    logger.info("🔍 [TOKEN-CUSTOMIZER] OAuth2Authorization found: id={}", authorization.getId());
+                    logger.info("🔍 [TOKEN-CUSTOMIZER] All authorization attributes: {}", authorization.getAttributes().keySet());
                     
                     // Read patient_id directly from attributes (injected when authorization was saved)
                     Object patientIdAttr = authorization.getAttribute("patient_id");
                     if (patientIdAttr != null) {
                         selectedPatientId = patientIdAttr.toString();
+                        logger.info("🏥 [TOKEN-CUSTOMIZER] Found patient_id in attributes: {}", selectedPatientId);
                         if (selectedPatientId.startsWith("Patient/")) {
                             selectedPatientId = selectedPatientId.substring(8);
                         }
                         context.getClaims().claim("patient", selectedPatientId);
                         logger.info("🏥 [TOKEN-CUSTOMIZER] Added patient claim '{}' from authorization attributes", selectedPatientId);
                     } else {
-                        logger.debug("[TOKEN-CUSTOMIZER] No patient_id found in authorization attributes");
+                        logger.warn("⚠️ [TOKEN-CUSTOMIZER] No patient_id found in authorization attributes!");
+                        logger.warn("⚠️ [TOKEN-CUSTOMIZER] Available attributes: {}", authorization.getAttributes());
                     }
                 } else {
-                    logger.warn("⚠️ [TOKEN-CUSTOMIZER] OAuth2Authorization is null!");
+                    logger.error("❌ [TOKEN-CUSTOMIZER] OAuth2Authorization is null!");
                 }
                 
                 // Always add fhirUser claim if user has a FHIR resource reference

@@ -32,6 +32,11 @@ public class PatientContextAwareAuthorizationService implements OAuth2Authorizat
     public void save(OAuth2Authorization authorization) {
         // When saving an authorization (after consent), inject patient_id from session
         if (authorization != null) {
+            logger.info("🔍 [AUTH-SERVICE] Saving authorization: id={}, state={}, grantType={}", 
+                       authorization.getId(), 
+                       authorization.getAttribute("state"),
+                       authorization.getAuthorizationGrantType());
+            
             try {
                 // Try to get patient_id from HTTP session
                 String patientId = getPatientIdFromSession();
@@ -62,12 +67,16 @@ public class PatientContextAwareAuthorizationService implements OAuth2Authorizat
 
     @Override
     public void remove(OAuth2Authorization authorization) {
+        if (authorization != null) {
+            logger.info("🗑️  [AUTH-SERVICE] Removing authorization: id={}", authorization.getId());
+        }
         delegate.remove(authorization);
     }
 
     @Override
     public OAuth2Authorization findById(String id) {
         OAuth2Authorization authorization = delegate.findById(id);
+        logger.info("🔍 [AUTH-SERVICE] findById({}): {}", id, authorization != null ? "FOUND" : "NOT FOUND");
         logAuthorizationAttributes(authorization, "findById");
         return authorization;
     }
@@ -75,6 +84,7 @@ public class PatientContextAwareAuthorizationService implements OAuth2Authorizat
     @Override
     public OAuth2Authorization findByToken(String token, org.springframework.security.oauth2.server.authorization.OAuth2TokenType tokenType) {
         OAuth2Authorization authorization = delegate.findByToken(token, tokenType);
+        logger.info("🔍 [AUTH-SERVICE] findByToken(type={}): {}", tokenType, authorization != null ? "FOUND (id=" + authorization.getId() + ")" : "NOT FOUND");
         logAuthorizationAttributes(authorization, "findByToken(" + tokenType + ")");
         return authorization;
     }

@@ -36,10 +36,6 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
     
     public SmartOAuthSuccessHandler() {
         logger.info("🔧 [SMART-AUTH] SmartOAuthSuccessHandler bean created");
-        // This is the critical fix: prevent the cache from clearing the request
-        // Setting matchingRequestParameterName to null disables the "continue" parameter check
-        // which prevents automatic removal of the SavedRequest
-        this.requestCache.setMatchingRequestParameterName(null);
     }
     
     @Override
@@ -106,11 +102,11 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
             return;
         }
         
-        // Otherwise, continue to consent page (default OAuth flow)
-        logger.info("✅ [SMART-AUTH] Redirecting to consent page (default OAuth flow)");
-        String consentUrl = buildConsentUrl(clientId, scope, state, redirectUri, 
-                           responseType, codeChallenge, codeChallengeMethod);
-        response.sendRedirect(consentUrl);
+        // Otherwise, let Spring Authorization Server handle the OAuth flow
+        // It will redirect to /consent automatically with proper state management
+        // Now that we have OAuth2AuthorizationConsentService, Spring can track consent state properly
+        logger.info("✅ [SMART-AUTH] Continuing OAuth flow - redirecting to authorization endpoint");
+        response.sendRedirect(savedUrl);  // Redirect to original /oauth2/authorize request
     }
     
     /**
@@ -120,29 +116,6 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
                                          String redirectUri, String responseType,
                                          String codeChallenge, String codeChallengeMethod) {
         StringBuilder url = new StringBuilder("/patient-picker?");
-        appendParam(url, OAuth2ParameterNames.CLIENT_ID, clientId);
-        appendParam(url, OAuth2ParameterNames.SCOPE, scope);
-        appendParam(url, OAuth2ParameterNames.STATE, state);
-        appendParam(url, OAuth2ParameterNames.REDIRECT_URI, redirectUri);
-        appendParam(url, OAuth2ParameterNames.RESPONSE_TYPE, responseType);
-        appendParam(url, "code_challenge", codeChallenge);
-        appendParam(url, "code_challenge_method", codeChallengeMethod);
-        
-        // Remove trailing &
-        if (url.charAt(url.length() - 1) == '&') {
-            url.deleteCharAt(url.length() - 1);
-        }
-        
-        return url.toString();
-    }
-    
-    /**
-     * Build consent URL with OAuth parameters
-     */
-    private String buildConsentUrl(String clientId, String scope, String state, 
-                                   String redirectUri, String responseType,
-                                   String codeChallenge, String codeChallengeMethod) {
-        StringBuilder url = new StringBuilder("/consent?");
         appendParam(url, OAuth2ParameterNames.CLIENT_ID, clientId);
         appendParam(url, OAuth2ParameterNames.SCOPE, scope);
         appendParam(url, OAuth2ParameterNames.STATE, state);
