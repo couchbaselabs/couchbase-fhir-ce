@@ -63,6 +63,8 @@ public class PatientPickerController {
             @RequestParam(value = "code_challenge_method", required = false) String codeChallengeMethod,
             @RequestParam(value = "searchTerm", required = false) String searchTerm) {
         
+        logger.info("🚀 [PATIENT-PICKER] GET /patient-picker called - client: {}, user: {}", clientId, principal.getName());
+        
         // Prevent browser caching
         response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response.setHeader("Pragma", "no-cache");

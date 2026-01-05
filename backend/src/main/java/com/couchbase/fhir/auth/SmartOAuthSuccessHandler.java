@@ -35,7 +35,10 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
     private final HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
     
     public SmartOAuthSuccessHandler() {
+        logger.info("🔧 [SMART-AUTH] ========================================");
         logger.info("🔧 [SMART-AUTH] SmartOAuthSuccessHandler bean created");
+        logger.info("🔧 [SMART-AUTH] Patient picker routing is ENABLED");
+        logger.info("🔧 [SMART-AUTH] ========================================");
     }
     
     @Override
@@ -74,25 +77,42 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
         String codeChallenge = getParameter(savedRequest, "code_challenge");
         String codeChallengeMethod = getParameter(savedRequest, "code_challenge_method");
         
-        logger.debug("🔍 [SMART-AUTH] OAuth params: client_id={}, scope={}, state={}", 
+        logger.info("🔍 [SMART-AUTH] ========================================");
+        logger.info("🔍 [SMART-AUTH] OAuth params: client_id={}, scope={}, state={}", 
                     clientId, scope, state);
+        
+        // Log all authorities for debugging
+        logger.info("🔍 [SMART-AUTH] User '{}' authorities (total: {})", 
+                   authentication.getName(),
+                   authentication.getAuthorities().size());
+        for (GrantedAuthority auth : authentication.getAuthorities()) {
+            logger.info("🔍 [SMART-AUTH]   - Authority: '{}'", auth.getAuthority());
+        }
         
         // Check if user has practitioner role
         boolean isPractitioner = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch(auth -> 
-                    auth.equals("ROLE_PRACTITIONER") || 
-                    auth.equalsIgnoreCase("practitioner"));
+                .anyMatch(auth -> {
+                    boolean matches = auth.equals("ROLE_PRACTITIONER") || auth.equalsIgnoreCase("practitioner");
+                    if (matches) {
+                        logger.info("🔍 [SMART-AUTH]   - MATCH: '{}' matches practitioner role", auth);
+                    }
+                    return matches;
+                });
         
         // Check if launch/patient scope is requested
         boolean requiresPatientContext = scope != null && scope.contains("launch/patient");
         
-        logger.info("🔍 [SMART-AUTH] User role check: isPractitioner={}, requiresPatientContext={}, authorities={}", 
-                   isPractitioner, requiresPatientContext, authentication.getAuthorities());
+        logger.info("🔍 [SMART-AUTH] Decision criteria:");
+        logger.info("🔍 [SMART-AUTH]   - isPractitioner: {}", isPractitioner);
+        logger.info("🔍 [SMART-AUTH]   - requiresPatientContext: {}", requiresPatientContext);
+        logger.info("🔍 [SMART-AUTH]   - scope: '{}'", scope);
+        logger.info("🔍 [SMART-AUTH]   - scope contains 'launch/patient': {}", (scope != null && scope.contains("launch/patient")));
+        logger.info("🔍 [SMART-AUTH] ========================================");
         
         // If practitioner requesting launch/patient scope → redirect to patient picker
         if (isPractitioner && requiresPatientContext) {
-            logger.info("🏥 [SMART-AUTH] Redirecting to patient picker (practitioner + launch/patient)");
+            logger.info("🏥 [SMART-AUTH] ✅ REDIRECTING TO PATIENT PICKER (practitioner + launch/patient)");
             String pickerUrl = buildPatientPickerUrl(clientId, scope, state, redirectUri, 
                                                      responseType, codeChallenge, codeChallengeMethod);
             logger.info("🏥 [SMART-AUTH] Patient picker URL: {}", pickerUrl);
@@ -105,6 +125,8 @@ public class SmartOAuthSuccessHandler implements AuthenticationSuccessHandler {
         // Otherwise, let Spring Authorization Server handle the OAuth flow
         // It will redirect to /consent automatically with proper state management
         // Now that we have OAuth2AuthorizationConsentService, Spring can track consent state properly
+        logger.info("❌ [SMART-AUTH] SKIPPING PATIENT PICKER - Redirecting to consent");
+        logger.info("❌ [SMART-AUTH] Reason: isPractitioner={}, requiresPatientContext={}", isPractitioner, requiresPatientContext);
         logger.info("✅ [SMART-AUTH] Continuing OAuth flow - redirecting to authorization endpoint");
         response.sendRedirect(savedUrl);  // Redirect to original /oauth2/authorize request
     }
