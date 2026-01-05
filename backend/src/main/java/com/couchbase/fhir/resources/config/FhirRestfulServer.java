@@ -4,9 +4,13 @@ import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.RestfulServer;
 
+import com.couchbase.admin.users.bulkGroup.service.GroupAdminService;
+import com.couchbase.fhir.resources.provider.BulkImportProvider;
 import com.couchbase.fhir.resources.provider.USCoreCapabilityProvider;
 import com.couchbase.fhir.resources.interceptor.BucketAwareValidationInterceptor;
 import com.couchbase.fhir.resources.service.FhirBucketConfigService;
+import com.couchbase.fhir.resources.service.FhirBundleProcessingService;
+import com.couchbase.fhir.resources.service.FtsSearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -72,6 +76,18 @@ public class FhirRestfulServer extends RestfulServer {
     @Autowired
     private com.couchbase.common.config.FhirServerConfig fhirServerConfig;
 
+    @Autowired
+    private com.couchbase.admin.connections.service.ConnectionService connectionService;
+
+    @Autowired
+    private FhirBundleProcessingService fhirBundleProcessingService;
+
+    @Autowired
+    private GroupAdminService groupAdminService;
+
+    @Autowired
+    private FtsSearchService ftsSearchService;
+
     @Override
     protected void initialize() {
         logger.info("🚀 Initializing FhirRestfulServer");
@@ -123,7 +139,9 @@ public class FhirRestfulServer extends RestfulServer {
             USCoreCapabilityProvider capabilityProvider = new USCoreCapabilityProvider(this, buildProperties, configuredBaseUrl);
             setServerConformanceProvider(capabilityProvider);
             registerProviders(allProviders); // Register all providers
-            
+            registerProvider(new BulkImportProvider(fhirContext  , connectionService , fhirBundleProcessingService , groupAdminService , fhirServerConfig , ftsSearchService));
+
+
         } catch (Exception e) {
             logger.error("❌ Failed to get dynamic providers, falling back to autowired only: {}", e.getMessage());
             // Fallback to original behavior
