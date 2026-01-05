@@ -121,7 +121,7 @@ const getScopePrefix = (clientType: "patient" | "provider" | "system") => {
     case "patient":
       return "patient";
     case "provider":
-      return "user";
+      return "patient"; // Provider apps also use patient/* scopes
     case "system":
       return "system";
     default:

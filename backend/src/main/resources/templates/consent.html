@@ -229,8 +229,9 @@
         </h3>
 
         <div class="scope-note">
-          <strong>Note:</strong> Scopes ending with ".rs" provide Read and
-          Search access to your health records.
+          <strong>Note:</strong> Scopes show the requested access to your health
+          records. Common suffixes: .r (read), .u (update), .c (create), .d
+          (delete), .s (search)
         </div>
 
         <table class="scopes-table">
@@ -308,98 +309,128 @@
     </div>
 
     <script th:inline="javascript">
-      // FHIR scope descriptions mapping
-      const scopeDescriptions = {
-        "patient/Patient.rs": {
+      // Generic FHIR resource descriptions (suffix-independent)
+      // Maps resource type to description, works with any suffix (.ru, .rs, .c, .cruds, etc.)
+      const resourceDescriptions = {
+        Patient: {
           description:
             "Your basic demographic information, contact details, and identifiers",
         },
-        "patient/AllergyIntolerance.rs": {
+        AllergyIntolerance: {
           description:
             "Known allergies, intolerances, past reactions, and related clinical notes",
         },
-        "patient/Condition.rs": {
+        Condition: {
           description:
             "Medical conditions, diagnoses, problems, and health concerns",
         },
-        "patient/Medication.rs": {
+        Medication: {
           description:
             "Information about medications you are taking or have taken",
         },
-        "patient/MedicationRequest.rs": {
+        MedicationRequest: {
           description:
             "Prescription orders, dosages, and medication instructions from providers",
         },
-        "patient/MedicationDispense.rs": {
+        MedicationDispense: {
           description:
             "Records of medications that have been dispensed to you by pharmacies",
         },
-        "patient/Observation.rs": {
+        Observation: {
           description:
             "Lab results, vital signs, measurements, and clinical observations",
         },
-        "patient/DiagnosticReport.rs": {
+        DiagnosticReport: {
           description:
             "Diagnostic test results, imaging reports, and pathology findings",
         },
-        "patient/Procedure.rs": {
+        Procedure: {
           description:
             "Medical procedures, surgeries, and treatments you have received",
         },
-        "patient/Immunization.rs": {
+        Immunization: {
           description: "Vaccination history and immunization records",
         },
-        "patient/Encounter.rs": {
+        Encounter: {
           description:
             "Healthcare visits, appointments, and interactions with providers",
         },
-        "patient/CarePlan.rs": {
+        CarePlan: {
           description:
             "Treatment plans, care coordination, and healthcare goals",
         },
-        "patient/CareTeam.rs": {
+        CareTeam: {
           description:
             "Information about your healthcare team and care coordinators",
         },
-        "patient/Goal.rs": {
+        Goal: {
           description: "Healthcare goals, targets, and outcome objectives",
         },
-        "patient/Device.rs": {
+        Device: {
           description: "Medical devices, implants, and equipment you use",
         },
-        "patient/DocumentReference.rs": {
+        DocumentReference: {
           description: "Clinical documents, reports, and attached files",
         },
-        "patient/Practitioner.rs": {
+        Practitioner: {
           description:
             "Information about your healthcare providers and their credentials",
         },
-        "patient/PractitionerRole.rs": {
+        PractitionerRole: {
           description: "Roles and specializations of your healthcare providers",
         },
-        "patient/Organization.rs": {
+        Organization: {
           description:
             "Healthcare organizations, hospitals, and clinics involved in your care",
         },
-        "patient/Location.rs": {
+        Location: {
           description:
             "Healthcare facilities and locations where you receive care",
         },
-        "patient/Coverage.rs": {
+        Coverage: {
           description: "Insurance coverage, benefits, and payer information",
         },
-        "patient/ServiceRequest.rs": {
+        ServiceRequest: {
           description:
             "Orders for services, referrals, and requested procedures",
         },
-        "patient/Specimen.rs": {
+        Specimen: {
           description: "Laboratory specimens and sample collection information",
         },
-        "patient/Provenance.rs": {
+        Provenance: {
           description:
             "Information about who created or modified your health records",
         },
+        RelatedPerson: {
+          description:
+            "Information about people related to you (family, caregivers)",
+        },
       };
+
+      // Helper function to get description for any scope
+      function getScopeDescription(scope) {
+        // Handle wildcard scopes like patient/*.ru, patient/*.rs, etc.
+        if (scope.includes("/*")) {
+          return {
+            description: "Access to all your health information and records",
+          };
+        }
+
+        // Extract resource type from scope pattern: patient/ResourceType.suffix
+        const match = scope.match(/patient\/([^.]+)/);
+        if (match && match[1]) {
+          const resourceType = match[1];
+          return (
+            resourceDescriptions[resourceType] || {
+              description: "Access to related health information",
+            }
+          );
+        }
+
+        return {
+          description: "Access to related health information",
+        };
+      }
 
       // Parse scopes from Thymeleaf
       /*[# th:if="${scopes}"]*/
@@ -426,9 +457,7 @@
 
         // Only show patient/ scopes in the table for user selection
         patientScopes.forEach((scope, index) => {
-          const scopeInfo = scopeDescriptions[scope] || {
-            description: "Access to related health information",
-          };
+          const scopeInfo = getScopeDescription(scope);
 
           const row = document.createElement("tr");
           row.innerHTML = `
