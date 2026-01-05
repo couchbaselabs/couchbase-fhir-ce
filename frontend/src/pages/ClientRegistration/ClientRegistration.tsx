@@ -106,18 +106,12 @@ const getMandatoryScopes = (clientType: "patient" | "provider" | "system") => {
       description: "Refresh tokens for offline access",
     },
   ];
-  const launchScope =
-    clientType === "patient"
-      ? {
-          value: "launch/patient",
-          label: "launch/patient",
-          description: "Patient context at launch",
-        }
-      : {
-          value: "launch",
-          label: "launch",
-          description: "App launched with user or system context",
-        };
+  // Both patient and provider apps use launch/patient
+  const launchScope = {
+    value: "launch/patient",
+    label: "launch/patient",
+    description: "Patient context at launch",
+  };
   return [launchScope, ...base];
 };
 
@@ -165,7 +159,7 @@ const getUSCoreScopes = (clientType: "patient" | "provider" | "system") => {
     "ServiceRequest",
     "Specimen",
   ];
-  return resources.map((r) => `${prefix}/${r}.rs`);
+  return resources.map((r) => `${prefix}/${r}.ru`);
 };
 
 // Legacy: kept for backwards compatibility
@@ -313,22 +307,27 @@ const ClientRegistration: React.FC = () => {
   };
 
   const resetForm = () => {
+    const initialClientType = "patient";
+    const baseScopes = getMandatoryScopes(initialClientType).map(
+      (s) => s.value
+    );
+
     setFormData({
       clientName: "",
       publisherUrl: "",
-      clientType: "patient",
+      clientType: initialClientType,
       authenticationType: "public",
       launchType: "standalone",
       redirectUris: [],
-      scopes: getMandatoryScopes("patient").map((s) => s.value),
+      scopes: baseScopes,
       pkceEnabled: true,
       pkceMethod: "S256",
     });
     setRedirectUriInput("");
     setError(null);
-    // Reset new scopes UI
+    // Reset new scopes UI - start with custom mode and base scopes
     setScopeMode("custom");
-    setScopesText("");
+    setScopesText(baseScopes.join(" "));
   };
 
   const handleAddRedirectUri = () => {
@@ -365,14 +364,24 @@ const ClientRegistration: React.FC = () => {
   // Scopes preset handler
   const applyScopePreset = (mode: "custom" | "all-read" | "us-core") => {
     setScopeMode(mode);
+
+    // Get base scopes for patient/provider (not for system)
+    const baseScopes =
+      formData.clientType === "system"
+        ? []
+        : getMandatoryScopes(formData.clientType).map((s) => s.value);
+
     if (mode === "custom") {
-      setScopesText("");
+      // For custom, just add the base scopes
+      setScopesText(baseScopes.join(" "));
     } else if (mode === "all-read") {
       const prefix = getScopePrefix(formData.clientType);
-      setScopesText(`${prefix}/*.rs`);
+      const allScopes = [...baseScopes, `${prefix}/*.ru`];
+      setScopesText(allScopes.join(" "));
     } else if (mode === "us-core") {
       const usCoreScopes = getUSCoreScopes(formData.clientType);
-      setScopesText(usCoreScopes.join(" "));
+      const allScopes = [...baseScopes, ...usCoreScopes];
+      setScopesText(allScopes.join(" "));
     }
   };
 
@@ -411,14 +420,44 @@ const ClientRegistration: React.FC = () => {
       return;
     }
 
-    // Build final scopes: mandatory + parsed from textarea
-    const mandatoryScopes = getMandatoryScopes(formData.clientType).map(
-      (s) => s.value
-    );
-    const optionalScopes = parsedOptionalScopes(scopesText);
-    const finalScopes = Array.from(
-      new Set([...mandatoryScopes, ...optionalScopes])
-    );
+    // Parse scopes from textarea
+    const parsedScopes = parsedOptionalScopes(scopesText);
+
+    // Validation: Patient clients cannot use user/ scopes
+    if (formData.clientType === "patient") {
+      const hasUserScope = parsedScopes.some((scope) =>
+        scope.startsWith("user/")
+      );
+      if (hasUserScope) {
+        setError(
+          "Patient apps cannot use user/* scopes. Please remove any user/ scopes to proceed."
+        );
+        return;
+      }
+    }
+
+    // Validation: System clients should not have interactive scopes
+    if (formData.clientType === "system") {
+      const interactiveScopes = [
+        "openid",
+        "fhirUser",
+        "offline_access",
+        "launch",
+        "launch/patient",
+      ];
+      const hasInteractiveScope = parsedScopes.some((scope) =>
+        interactiveScopes.includes(scope)
+      );
+      if (hasInteractiveScope) {
+        setError(
+          "System apps should not include openid, fhirUser, offline_access, or launch scopes. Please remove these scopes."
+        );
+        return;
+      }
+    }
+
+    // Build final scopes
+    const finalScopes = Array.from(new Set(parsedScopes));
 
     if (finalScopes.length === 0) {
       setError("At least one scope is required");
@@ -740,12 +779,19 @@ const ClientRegistration: React.FC = () => {
                   value={formData.clientType}
                   onChange={(_, newValue) => {
                     if (newValue) {
+                      const newClientType = newValue as
+                        | "patient"
+                        | "provider"
+                        | "system";
                       // Force confidential auth for system apps
-                      const updates: any = { clientType: newValue };
-                      if (newValue === "system") {
+                      const updates: any = { clientType: newClientType };
+                      if (newClientType === "system") {
                         updates.authenticationType = "confidential";
                       }
                       setFormData({ ...formData, ...updates });
+
+                      // Update scopes text based on current mode
+                      applyScopePreset(scopeMode);
                     }
                   }}
                 >
@@ -980,47 +1026,6 @@ const ClientRegistration: React.FC = () => {
                 Allowed Scopes *
               </Typography>
 
-              {/* Mandatory Scopes - Chips (non-removable) */}
-              <Box sx={{ mb: 2 }}>
-                {formData.clientType === "system" ? (
-                  <Alert severity="info">
-                    System apps don't require launch/openid/fhirUser scopes (no
-                    user interaction)
-                  </Alert>
-                ) : (
-                  <>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      gutterBottom
-                      display="block"
-                    >
-                      Required Scopes (cannot be removed):
-                    </Typography>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 0.5,
-                        mt: 1,
-                      }}
-                    >
-                      {getMandatoryScopes(formData.clientType).map((scope) => (
-                        <Chip
-                          key={scope.value}
-                          label={scope.value}
-                          size="small"
-                          color="primary"
-                          icon={<CheckCircleIcon />}
-                        />
-                      ))}
-                    </Box>
-                  </>
-                )}
-              </Box>
-
-              <Divider sx={{ my: 2 }} />
-
               {/* New scopes preset toggle + textarea */}
               <Box>
                 <Box
@@ -1071,7 +1076,7 @@ const ClientRegistration: React.FC = () => {
                   fullWidth
                   placeholder={`e.g. ${getScopePrefix(
                     formData.clientType
-                  )}/*.rs (SMART v2: rs=read+search)`}
+                  )}/*.ru (read+update access)`}
                   value={scopesText}
                   onChange={(e) => setScopesText(e.target.value)}
                 />
