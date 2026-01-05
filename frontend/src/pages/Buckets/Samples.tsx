@@ -10,7 +10,7 @@ import { useBucketStore } from "../../store/bucketStore";
 const Samples: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSampleType, setSelectedSampleType] = useState<
-    "synthea" | "uscore" | "onc"
+    "synthea" | "us-core" | "onc"
   >("synthea");
 
   // Get connection and bucket information (single-tenant mode)
@@ -18,7 +18,7 @@ const Samples: React.FC = () => {
   const bucketStore = useBucketStore();
   const bucket = bucketStore.bucket;
 
-  const handleCardClick = (sampleType: "synthea" | "uscore" | "onc") => {
+  const handleCardClick = (sampleType: "synthea" | "us-core" | "onc") => {
     setSelectedSampleType(sampleType);
     setDialogOpen(true);
   };
@@ -71,7 +71,7 @@ const Samples: React.FC = () => {
           disabled={!hasRequiredSelections}
         />
         <USCoreSamplesCard
-          onClick={() => handleCardClick("uscore")}
+          onClick={() => handleCardClick("us-core")}
           disabled={!hasRequiredSelections}
         />
         <OncSamplesCard

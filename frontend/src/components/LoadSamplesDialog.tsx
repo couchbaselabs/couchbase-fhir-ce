@@ -22,7 +22,7 @@ interface LoadSamplesDialogProps {
   onClose: () => void;
   bucketName: string;
   connectionName: string;
-  sampleType: "synthea" | "uscore" | "onc";
+  sampleType: "synthea" | "us-core" | "onc";
   onSuccess?: () => void;
 }
 
@@ -68,7 +68,7 @@ const LoadSamplesDialog: React.FC<LoadSamplesDialogProps> = ({
           resourceTypes: 20,
           apiEndpoint: "/api/sample-data/load-with-progress",
         };
-      case "uscore":
+      case "us-core":
         return {
           title: "Load US Core Sample Data",
           description: "US Core-supplied sample FHIR data",
