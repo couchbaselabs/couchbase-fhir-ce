@@ -30,7 +30,9 @@
         max-width: 1000px;
         width: 100%;
         max-height: 90vh;
-        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
 
       .picker-header {
@@ -104,22 +106,48 @@
       }
 
       .patients-section {
-        margin-bottom: 24px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-height: 0;
+      }
+
+      .patients-section form {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
       }
 
       .patients-section h3 {
         font-size: 16px;
         color: #333;
         margin-bottom: 16px;
+        flex-shrink: 0;
+      }
+
+      .table-wrapper {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        min-height: 200px;
+        max-height: 100%;
       }
 
       .patients-table {
         border-collapse: collapse;
         width: 100%;
         background: white;
-        border-radius: 8px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .patients-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
       }
 
       .patients-table th {
@@ -129,6 +157,7 @@
         text-align: left;
         font-weight: 600;
         font-size: 14px;
+        border-bottom: 2px solid #5568d3;
       }
 
       .patients-table td {
@@ -212,10 +241,10 @@
       .actions {
         display: flex;
         gap: 12px;
-        position: sticky;
-        bottom: 0;
-        background: white;
+        flex-shrink: 0;
         padding-top: 20px;
+        margin-top: 16px;
+        border-top: 1px solid #e0e0e0;
       }
 
       button {
@@ -390,61 +419,95 @@
           />
           <input type="hidden" name="action" id="formAction" value="select" />
 
-          <table class="patients-table">
-            <thead>
-              <tr>
-                <th>Patient ID</th>
-                <th>Name</th>
-                <th>Birth Date</th>
-                <th>Gender</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                th:each="patient : ${patients}"
-                th:data-patient-id="${patient.id}"
-                onclick="selectRow(this)"
-              >
-                <td>
-                  <span class="patient-id" th:text="${patient.id}"
-                    >Patient/example</span
-                  >
-                </td>
-                <td>
-                  <div class="patient-name" th:text="${patient.fullName}">
-                    John Doe
-                  </div>
-                  <span class="deceased-badge" th:if="${patient.deceased}"
-                    >Deceased</span
-                  >
-                </td>
-                <td th:text="${patient.birthDate}">1980-01-01</td>
-                <td th:text="${patient.gender}">male</td>
-              </tr>
-            </tbody>
-          </table>
-        </form>
-      </div>
+          <div class="table-wrapper">
+            <table class="patients-table">
+              <thead>
+                <tr>
+                  <th>Patient ID</th>
+                  <th>Name</th>
+                  <th>Birth Date</th>
+                  <th>Age (yrs)</th>
+                  <th>Gender</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  th:each="patient : ${patients}"
+                  th:data-patient-id="${patient.id}"
+                  th:data-birth-date="${patient.birthDate}"
+                  onclick="selectRow(this)"
+                >
+                  <td>
+                    <span class="patient-id" th:text="${patient.id}"
+                      >Patient/example</span
+                    >
+                  </td>
+                  <td>
+                    <div class="patient-name" th:text="${patient.fullName}">
+                      John Doe
+                    </div>
+                    <span class="deceased-badge" th:if="${patient.deceased}"
+                      >Deceased</span
+                    >
+                  </td>
+                  <td th:text="${patient.birthDate}">1980-01-01</td>
+                  <td class="age-cell">-</td>
+                  <td th:text="${patient.gender}">male</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-      <!-- Action Buttons -->
-      <div class="actions" th:if="${!patients.isEmpty()}">
-        <button type="button" class="btn-cancel" onclick="cancelSelection()">
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn-select"
-          id="selectBtn"
-          disabled
-          onclick="confirmSelection()"
-        >
-          Continue with Selected Patient
-        </button>
+          <!-- Action Buttons (inside form) -->
+          <div class="actions">
+            <button
+              type="button"
+              class="btn-cancel"
+              onclick="cancelSelection()"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="btn-select"
+              id="selectBtn"
+              disabled
+              onclick="confirmSelection()"
+            >
+              Continue with Selected Patient
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
     <script th:inline="javascript">
       let selectedPatientId = null;
+
+      // Age calculation function (same logic as FHIRGroups)
+      function computeAge(birthDate) {
+        if (!birthDate) return "-";
+        const parts = birthDate.split("-");
+        const year = parseInt(parts[0], 10);
+        if (isNaN(year)) return "-";
+        const month =
+          parts.length > 1
+            ? Math.max(1, Math.min(12, parseInt(parts[1], 10) || 1))
+            : 1;
+        const day =
+          parts.length > 2
+            ? Math.max(1, Math.min(31, parseInt(parts[2], 10) || 1))
+            : 1;
+        const dob = new Date(year, month - 1, day);
+        const now = new Date();
+        let age = now.getFullYear() - dob.getFullYear();
+        const m = now.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) {
+          age--;
+        }
+        if (age < 0) return "0";
+        return `${age}`;
+      }
 
       function selectRow(row) {
         // Remove previous selection
@@ -479,9 +542,19 @@
         document.getElementById("patientForm").submit();
       }
 
-      // Initialize: if only one patient, auto-select it
+      // Initialize: calculate ages and auto-select if only one patient
       document.addEventListener("DOMContentLoaded", function () {
+        // Calculate and populate ages for all rows
         const rows = document.querySelectorAll(".patients-table tbody tr");
+        rows.forEach((row) => {
+          const birthDate = row.getAttribute("data-birth-date");
+          const ageCell = row.querySelector(".age-cell");
+          if (ageCell && birthDate) {
+            ageCell.textContent = computeAge(birthDate);
+          }
+        });
+
+        // Auto-select if only one patient
         if (rows.length === 1) {
           selectRow(rows[0]);
         }
