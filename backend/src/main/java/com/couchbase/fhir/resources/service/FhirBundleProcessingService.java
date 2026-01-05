@@ -275,7 +275,10 @@ public class FhirBundleProcessingService {
         for (int i = 0; i < bundle.getEntry().size(); i++) {
             Bundle.BundleEntryComponent entry = bundle.getEntry().get(i);
             Resource resource = entry.getResource();
-            Bundle.HTTPVerb method = entry.getRequest() != null ? entry.getRequest().getMethod() : Bundle.HTTPVerb.POST;
+            // Default to POST if request is null or method is null
+            Bundle.HTTPVerb method = (entry.getRequest() != null && entry.getRequest().getMethod() != null) 
+                ? entry.getRequest().getMethod() 
+                : Bundle.HTTPVerb.POST;
             
             // Handle GET requests (no resource, only request URL)
             if (resource == null) {
@@ -383,7 +386,10 @@ public class FhirBundleProcessingService {
         for (int i = 0; i < bundle.getEntry().size(); i++) {
             Bundle.BundleEntryComponent entry = bundle.getEntry().get(i);
             Resource resource = entry.getResource();
-            Bundle.HTTPVerb method = entry.getRequest() != null ? entry.getRequest().getMethod() : Bundle.HTTPVerb.POST;
+            // Default to POST if request is null or method is null
+            Bundle.HTTPVerb method = (entry.getRequest() != null && entry.getRequest().getMethod() != null) 
+                ? entry.getRequest().getMethod() 
+                : Bundle.HTTPVerb.POST;
             
             // Handle GET requests (no resource, only request)
             if (resource == null) {
@@ -481,11 +487,12 @@ public class FhirBundleProcessingService {
      * Build UUID mapping for all entries in the Bundle
      * For POST operations: Always generate new IDs (ignore client-supplied IDs)
      * For PUT operations: Use client-supplied IDs (not implemented yet)
+     * Also builds conditional reference mappings for Synthea-style bundles
      */
     private Map<String, String> buildUuidMapping(Bundle bundle) {
         Map<String, String> uuidToIdMapping = new HashMap<>();
 
-        logger.debug("🔄 Building UUID mapping for Bundle with {} entries", bundle.getEntry().size());
+        logger.debug("🔄 Building UUID and conditional reference mapping for Bundle with {} entries", bundle.getEntry().size());
 
         for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
             Resource resource = entry.getResource();
@@ -504,7 +511,7 @@ public class FhirBundleProcessingService {
             // ✅ FHIR Compliance: For POST operations, ALWAYS generate new IDs
             // The server ignores any client-supplied IDs and generates its own
             String actualResourceId = generateResourceId(resourceType);
-            logger.debug("🆔 Generated new server ID for {}: {} (ignoring any client-supplied ID)", resourceType, actualResourceId);
+            // logger.debug("🆔 Generated new server ID for {}: {} (ignoring any client-supplied ID)", resourceType, actualResourceId);
 
             // Map fullUrl references to the new server-generated ID
             // Handle both proper UUIDs ("urn:uuid:...") and simple identifiers ("qr-pgp")
@@ -513,13 +520,46 @@ public class FhirBundleProcessingService {
                 String mappedReference = resourceType + "/" + actualResourceId; // "Patient/abc123-def456-..."
                 uuidToIdMapping.put(fullUrl, mappedReference);
             }
+            
+            // Build conditional reference mappings for Synthea bundles
+            // e.g., "Location?identifier=https://github.com/synthetichealth/synthea|xyz" -> "Location/actual-id"
+            buildConditionalReferenceMapping(resource, resourceType, actualResourceId, uuidToIdMapping);
 
             // ✅ Always set the server-generated ID on the resource (overwrite any client ID)
             resource.setId(actualResourceId);
         }
 
-        // logger.info("📊 Final UUID mapping: {}", uuidToIdMapping);
+        logger.debug("📊 Built {} reference mappings (UUID + conditional)", uuidToIdMapping.size());
         return uuidToIdMapping;
+    }
+    
+    /**
+     * Build conditional reference mappings for Synthea-style bundles
+     * Maps conditional references like "Location?identifier=system|value" to actual resource references
+     */
+    private void buildConditionalReferenceMapping(Resource resource, String resourceType, String actualResourceId, 
+                                                   Map<String, String> uuidToIdMapping) {
+        FhirTerser terser = fhirContext.newTerser();
+        String mappedReference = resourceType + "/" + actualResourceId;
+        
+        // Extract identifier if present (common in Synthea bundles)
+        try {
+            List<Identifier> identifiers = terser.getAllPopulatedChildElementsOfType(resource, Identifier.class);
+            if (!identifiers.isEmpty()) {
+                logger.debug("🔍 Found {} identifiers in {} resource", identifiers.size(), resourceType);
+            }
+            for (Identifier identifier : identifiers) {
+                if (identifier.getSystem() != null && identifier.getValue() != null) {
+                    // Create conditional reference pattern that might be used to reference this resource
+                    String conditionalRef = resourceType + "?identifier=" + identifier.getSystem() + "|" + identifier.getValue();
+                    uuidToIdMapping.put(conditionalRef, mappedReference);
+                    logger.debug("🔗 Mapped conditional reference: {} → {}", conditionalRef, mappedReference);
+                }
+            }
+        } catch (Exception e) {
+            // Some resource types don't have identifiers - that's OK
+            logger.debug("📝 No identifiers found in {} (expected for some types): {}", resourceType, e.getMessage());
+        }
     }
 
     // Removed extractIdFromUuid and isValidResourceId methods - no longer needed
@@ -577,8 +617,24 @@ public class FhirBundleProcessingService {
                     }
                     
                     if (actualReference == null) {
-                        logger.debug("⚠️ Could not resolve reference: {} in {}", originalRef, resourceType);
-                        logger.debug("⚠️ Available mappings: {}", uuidToIdMapping.keySet());
+                        // Check if it's a conditional reference and show matching ones
+                        if (originalRef.contains("?")) {
+                            String refResourceType = originalRef.substring(0, originalRef.indexOf("?"));
+                            logger.debug("⚠️ Could not resolve conditional reference: {} in {}", originalRef, resourceType);
+                            
+                            // Show available conditional references for this resource type
+                            List<String> matchingMappings = uuidToIdMapping.keySet().stream()
+                                .filter(key -> key.startsWith(refResourceType + "?"))
+                                .collect(java.util.stream.Collectors.toList());
+                            
+                            if (!matchingMappings.isEmpty()) {
+                                logger.debug("⚠️ Available {} conditional references: {}", refResourceType, matchingMappings);
+                            } else {
+                                logger.debug("⚠️ No conditional references found for {} in bundle", refResourceType);
+                            }
+                        } else {
+                            logger.debug("⚠️ Could not resolve reference: {} in {}", originalRef, resourceType);
+                        }
                     }
                 }
             } else {
@@ -590,27 +646,6 @@ public class FhirBundleProcessingService {
     // Removed insertResourceInTransaction - now handled by PostService
 
     // Removed insertResourceIntoCouchbase - now handled by individual services
-
-    /**
-     * Create processed entries from Bundle without re-processing (for transaction responses)
-     */
-    private List<ProcessedEntry> createProcessedEntriesFromBundle(Bundle bundle) {
-        List<ProcessedEntry> processedEntries = new ArrayList<>();
-        
-        for (Bundle.BundleEntryComponent entry : bundle.getEntry()) {
-            Resource resource = entry.getResource();
-            String resourceType = resource.getResourceType().name();
-            String resourceId = resource.getIdElement().getIdPart();
-            String documentKey = resourceType + "/" + resourceId;
-            
-            // Create response entry
-            Bundle.BundleEntryComponent responseEntry = createResponseEntry(resource, resourceType);
-            processedEntries.add(ProcessedEntry.success(resourceType, resourceId, documentKey, responseEntry));
-        }
-        
-        logger.debug("✅ Created {} processed entries from Bundle (no re-processing)", processedEntries.size());
-        return processedEntries;
-    }
 
     /**
      * Create a response entry for Bundle transaction response

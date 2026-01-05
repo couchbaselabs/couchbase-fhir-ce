@@ -22,7 +22,7 @@ interface LoadSamplesDialogProps {
   onClose: () => void;
   bucketName: string;
   connectionName: string;
-  sampleType: "synthea" | "uscore";
+  sampleType: "synthea" | "uscore" | "onc";
   onSuccess?: () => void;
 }
 
@@ -73,18 +73,19 @@ const LoadSamplesDialog: React.FC<LoadSamplesDialogProps> = ({
           title: "Load US Core Sample Data",
           description: "US Core-supplied sample FHIR data",
           details:
-            "Sample includes: 15 patients with 20 different FHIR resource types.",
+            "Sample includes: 4 patients with 28 different FHIR resource types.",
           patients: 4,
           resourceTypes: 28,
           apiEndpoint: "/api/sample-data/load-with-progress",
         };
-      default:
+      case "onc":
         return {
-          title: "Load Sample Data",
-          description: "Sample FHIR data",
-          details: "Sample FHIR data will be loaded.",
-          patients: 0,
-          resourceTypes: 0,
+          title: "Load ONC Sample Data",
+          description: "ONC sample FHIR data",
+          details:
+            "Sample includes: 7 patients with 12 different FHIR resource types.",
+          patients: 7,
+          resourceTypes: 12,
           apiEndpoint: "/api/sample-data/load-with-progress",
         };
     }

@@ -3,6 +3,7 @@
 ## Status: ✅ WORKING!
 
 Both flows now working:
+
 - ✅ **Patient Standalone Launch** (no patient picker)
 - ✅ **Provider Standalone Launch** (with patient picker)
 - ✅ Patient claim included in token
@@ -11,11 +12,13 @@ Both flows now working:
 ## The Root Causes
 
 ### Problem 1: Consent Form Including Authorization Parameters
+
 **Issue:** The consent form was submitting `response_type=code`, `code_challenge`, and `code_challenge_method` in the POST.
 
 **Why it broke:** Spring Authorization Server checks if `response_type` is present. If YES → treats as NEW authorization request. If NO → treats as consent response.
 
 **The Fix:** Remove these parameters from consent POST:
+
 ```html
 <!-- REMOVED from consent form POST -->
 <input type="hidden" name="response_type" ... />
@@ -24,9 +27,11 @@ Both flows now working:
 ```
 
 ### Problem 2: Request Cache Misconfiguration
+
 **Issue:** `SmartOAuthSuccessHandler` was creating its own `HttpSessionRequestCache` instance with `setMatchingRequestParameterName(null)`, conflicting with the global configuration.
 
 **The Fix:** Removed the duplicate configuration from the constructor:
+
 ```java
 // BEFORE (broken):
 public SmartOAuthSuccessHandler() {
@@ -40,9 +45,11 @@ public SmartOAuthSuccessHandler() {
 ```
 
 ### Problem 3: Scope Submission Format
+
 **Issue:** Initially tried submitting scopes as multiple parameters, which broke. Then submitted as single space-separated string, which also caused issues.
 
 **The Fix:** Submit each scope as a separate parameter using Thymeleaf iteration:
+
 ```html
 <!-- Submit each scope separately -->
 <th:block th:each="scopeItem : ${scopes}">
@@ -55,22 +62,28 @@ This creates: `scope=openid&scope=fhirUser&scope=patient/*.rs&...`
 ## Files Changed
 
 ### 1. **consent.html** (Lines 261-284)
+
 **Changes:**
+
 - Removed `response_type` hidden field
-- Removed `code_challenge` hidden field  
+- Removed `code_challenge` hidden field
 - Removed `code_challenge_method` hidden field
 - Changed scope submission to use `th:each` loop for multiple scope parameters
 
 **Why:** Spring Authorization Server distinguishes consent POST from authorization request based on absence of `response_type`.
 
 ### 2. **SmartOAuthSuccessHandler.java** (Lines 37-39)
+
 **Changes:**
+
 - Removed `requestCache.setMatchingRequestParameterName(null)` from constructor
 
 **Why:** Global configuration in `AuthorizationServerConfig` already handles this. Having two separate request cache configurations caused conflicts.
 
 ### 3. **AuthorizationServerConfig.java** (Line 304-311)
+
 **Added:**
+
 ```java
 @Bean
 public OAuth2AuthorizationConsentService authorizationConsentService() {
@@ -81,7 +94,9 @@ public OAuth2AuthorizationConsentService authorizationConsentService() {
 **Why:** Spring Authorization Server needs this service to track consent state between requests. Without it, Spring can't remember consent decisions.
 
 ### 4. **SmartOAuthSuccessHandler.java** (Lines 109-113)
+
 **Changed:**
+
 ```java
 // BEFORE: Manually redirect to /consent
 String consentUrl = buildConsentUrl(...);
@@ -94,21 +109,25 @@ response.sendRedirect(savedUrl); // redirect to /oauth2/authorize
 **Why:** Let Spring Authorization Server manage the full OAuth flow instead of bypassing its state machine.
 
 ### 5. **PatientContextAwareAuthorizationService.java** (Added logging)
+
 **Added:** Comprehensive logging to track authorization save/find operations
 
 **Why:** Helps debug patient context flow and authorization lookup.
 
 ### 6. **AuthorizationServerConfig.java** (Token customizer logging)
+
 **Added:** Detailed logging in token customizer to show authorization attributes
 
 **Why:** Helps verify patient_id is being read correctly during token generation.
 
 ### 7. **ConsentController.java** (Added parameter logging)
+
 **Added:** Logging to show all parameters received by consent page
 
 **Why:** Helps debug what Spring passes when redirecting to consent.
 
 ### 8. **AuthorizeRequestLoggingFilter.java** (Enhanced logging)
+
 **Added:** Log ALL POST parameters to `/oauth2/authorize`
 
 **Why:** Helps debug what consent form submits and verify parameter format.
@@ -116,6 +135,7 @@ response.sendRedirect(savedUrl); // redirect to /oauth2/authorize
 ## The OAuth Flow (Fixed)
 
 ### Patient Standalone Launch
+
 ```
 1. GET /oauth2/authorize?client_id=X&state=ABC
 2. Not authenticated → Redirect to /oauth2/login
@@ -139,9 +159,10 @@ response.sendRedirect(savedUrl); // redirect to /oauth2/authorize
 ```
 
 ### Provider Standalone Launch (with Patient Picker)
+
 ```
 1. GET /oauth2/authorize?client_id=X&scope=launch/patient...
-2. Not authenticated → Redirect to /oauth2/login  
+2. Not authenticated → Redirect to /oauth2/login
 3. User logs in (practitioner credentials)
 4. SmartOAuthSuccessHandler → IS practitioner + launch/patient
 5. Redirects to /patient-picker
@@ -160,22 +181,29 @@ response.sendRedirect(savedUrl); // redirect to /oauth2/authorize
 ## Key Principles Learned
 
 ### 1. **Let Spring Control OAuth State Machine**
+
 Don't manually redirect to `/consent`. Always redirect to `/oauth2/authorize` and let Spring handle consent internally.
 
 ### 2. **Consent POST Must NOT Look Like Auth Request**
+
 A POST to `/oauth2/authorize` is treated as:
+
 - **Consent response** if: NO `response_type` parameter
 - **Authorization request** if: HAS `response_type` parameter
 
 ### 3. **Request Cache Matters**
+
 Only configure request cache behavior in ONE place (global HttpSecurity config), not in individual handlers.
 
 ### 4. **Scope Format for Consent**
+
 Submit scopes as multiple parameters with same name:
+
 - ✅ `scope=openid&scope=fhirUser&scope=patient/*.rs`
 - ❌ `scope=openid%20fhirUser%20patient/*.rs`
 
 ### 5. **Patient Context Flow**
+
 1. Patient picker stores `selected_patient_id` in session
 2. `PatientContextAwareAuthorizationService` reads from session
 3. Injects into `OAuth2Authorization.attributes`
@@ -185,11 +213,13 @@ Submit scopes as multiple parameters with same name:
 ## Testing Checklist
 
 - ✅ Patient standalone launch (no picker)
+
   - Login with patient credentials
   - Consent page shows
   - Approve → Token includes patient claim matching user's fhirUser
 
 - ✅ Provider standalone launch (with picker)
+
   - Login with practitioner credentials
   - Patient picker shows
   - Select patient
@@ -205,15 +235,19 @@ Submit scopes as multiple parameters with same name:
 ## Future Considerations
 
 ### Custom Consent UI
+
 We successfully kept the custom consent form! The key was understanding Spring's parameter expectations.
 
 ### Consent Revocation
+
 With `OAuth2AuthorizationConsentService` in place, you could potentially implement consent revocation by removing entries from the service.
 
 ### Persistent Consent
+
 Currently using `InMemoryOAuth2AuthorizationConsentService`. For production, consider implementing a Couchbase-backed consent service to persist consent decisions.
 
 ### PKCE Parameters
+
 We removed `code_challenge` from consent POST. Spring stores these from the original authorization request, so they don't need to be resubmitted.
 
 ## Debug Tips
@@ -229,6 +263,7 @@ If consent breaks again:
 ## Credits
 
 This fix took extensive debugging over multiple days, tracing through:
+
 - Spring Authorization Server internals
 - OAuth 2.0 state management
 - Request cache behavior
@@ -249,4 +284,3 @@ The breakthrough came from understanding that **Spring uses the presence/absence
 **Date Fixed:** January 3, 2026
 **Working Flows:** Patient Standalone + Provider Standalone with Patient Picker
 **Status:** Production Ready ✅
-

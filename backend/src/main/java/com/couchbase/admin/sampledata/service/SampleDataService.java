@@ -42,6 +42,7 @@ public class SampleDataService {
     // Sample data file paths
     private static final String SYNTHEA_SAMPLE_DATA_PATH = "static/sample-data/synthea-patients-sample.zip";
     private static final String USCORE_SAMPLE_DATA_PATH = "static/sample-data/us-core-examples.zip";
+    private static final String ONC_SAMPLE_DATA_PATH = "static/sample-data/onc-examples.zip";
     
     // Debug mode - set to true to process only 1 file for debugging
     private static final boolean DEBUG_MODE_SINGLE_FILE = false;
@@ -80,12 +81,14 @@ public class SampleDataService {
         }
         
         switch (sampleType.toLowerCase()) {
-            case "uscore":
             case "us-core":
                 return USCORE_SAMPLE_DATA_PATH;
+            case "onc":
+                return ONC_SAMPLE_DATA_PATH;
             case "synthea":
-            default:
                 return SYNTHEA_SAMPLE_DATA_PATH;
+            default:
+                return SYNTHEA_SAMPLE_DATA_PATH; // Default fallback
         }
     }
     
@@ -500,13 +503,15 @@ public class SampleDataService {
                 }
             }
             
-            // Process files concurrently with thread-safe counters
+            // Process files in PARALLEL with limited concurrency
+            // With 120s transaction timeout, parallel processing is now safe
+            // Limit to 4 threads to balance speed vs. transaction contention
             AtomicInteger processedFiles = new AtomicInteger(0);
             AtomicInteger totalResourcesLoaded = new AtomicInteger(0);
             AtomicInteger totalPatientsLoaded = new AtomicInteger(0);
             
-            // Create thread pool for concurrent processing (limit to avoid overwhelming Capella)
-            ExecutorService executor = Executors.newFixedThreadPool(Math.min(6, filesToProcess.size()));
+            // Create thread pool for concurrent processing (4 threads for good balance)
+            ExecutorService executor = Executors.newFixedThreadPool(Math.min(4, filesToProcess.size()));
             
             try {
                 // Process files concurrently

@@ -103,13 +103,9 @@ public class PostService {
         String serverGeneratedId;
         if (resource.getId() != null && !resource.getId().isEmpty()) {
             serverGeneratedId = resource.getId();
-            logger.debug("🔗 POST {} (in transaction): Using pre-assigned ID {} (from Bundle processing)", 
-                       resourceType, serverGeneratedId);
         } else {
             serverGeneratedId = generateResourceId();
             resource.setId(serverGeneratedId);
-            logger.debug("🆔 POST {} (in transaction): Generated new server ID {} (no pre-assigned ID)", 
-                       resourceType, serverGeneratedId);
         }
         
         // Apply proper meta with version "1" for CREATE operations

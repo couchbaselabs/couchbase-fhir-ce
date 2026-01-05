@@ -55,6 +55,7 @@ import {
   revokeClient as revokeClientAPI,
   deleteClient as deleteClientAPI,
 } from "../../services/oauthClientApi";
+import EditorComponent from "../../components/EditorComponent";
 
 // OAuth Client interface (will be shared with backend later)
 interface OAuthClientForm {
@@ -247,6 +248,11 @@ const ClientRegistration: React.FC = () => {
   const [initialSelectedGroupId, setInitialSelectedGroupId] = useState<
     string | undefined
   >(undefined);
+
+  // Client details dialog state
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedClientForDetails, setSelectedClientForDetails] =
+    useState<OAuthClient | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -536,7 +542,15 @@ const ClientRegistration: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {clients.map((client) => (
-                    <TableRow key={client.clientId} hover>
+                    <TableRow
+                      key={client.clientId}
+                      hover
+                      onClick={() => {
+                        setSelectedClientForDetails(client);
+                        setDetailsDialogOpen(true);
+                      }}
+                      sx={{ cursor: "pointer" }}
+                    >
                       <TableCell>
                         <Typography variant="body2" fontWeight="medium">
                           {client.clientName}
@@ -627,7 +641,8 @@ const ClientRegistration: React.FC = () => {
                           <span>
                             <IconButton
                               size="small"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedClient(client);
                                 setRevokeDialogOpen(true);
                               }}
@@ -638,12 +653,12 @@ const ClientRegistration: React.FC = () => {
                             </IconButton>
                           </span>
                         </Tooltip>
-                        {(client.clientType === "provider" ||
-                          client.clientType === "system") && (
-                          <Tooltip title="Attach bulk group">
+                        {client.clientType === "system" && (
+                          <Tooltip title="Attach bulk group (System apps only)">
                             <IconButton
                               size="small"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setAttachClientId(client.clientId);
                                 setAttachModalOpen(true);
                               }}
@@ -655,7 +670,8 @@ const ClientRegistration: React.FC = () => {
                         <Tooltip title="Permanently delete">
                           <IconButton
                             size="small"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setSelectedClient(client);
                               setDeleteDialogOpen(true);
                             }}
@@ -1303,6 +1319,72 @@ const ClientRegistration: React.FC = () => {
         onClose={() => setCopySnackbar(false)}
         message="Copied to clipboard!"
       />
+
+      {/* Client Details Dialog */}
+      <Dialog
+        open={detailsDialogOpen}
+        onClose={() => {
+          setDetailsDialogOpen(false);
+          setSelectedClientForDetails(null);
+        }}
+        maxWidth="md"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: { maxHeight: "90vh" },
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Typography variant="h6">Client Details</Typography>
+            <IconButton
+              size="small"
+              onClick={() => {
+                if (selectedClientForDetails) {
+                  handleCopyToClipboard(
+                    JSON.stringify(selectedClientForDetails, null, 2)
+                  );
+                }
+              }}
+              sx={{ ml: 2 }}
+            >
+              <CopyIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          {selectedClientForDetails && (
+            <Typography variant="caption" color="text.secondary">
+              {selectedClientForDetails.clientName}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, height: "500px" }}>
+          {selectedClientForDetails && (
+            <EditorComponent
+              value={JSON.stringify(selectedClientForDetails, null, 2)}
+              language="json"
+              height="500px"
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDetailsDialogOpen(false);
+              setSelectedClientForDetails(null);
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <BulkGroupAttachModal
         open={attachModalOpen}
         onClose={() => {

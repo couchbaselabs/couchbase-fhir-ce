@@ -149,41 +149,48 @@ public class ConnectionService {
                 });
             }
             
-            // Only configure transactions if explicitly provided in config.yaml
-            if (transactionDurability != null || transactionTimeoutSeconds != null) {
-                envBuilder.transactionsConfig(transactions -> {
-                    if (transactionDurability != null) {
-                        // Configure transaction durability based on cluster setup
-                        // NONE: Single-node development (no replicas needed)
-                        // MAJORITY: Production multi-node (recommended)
-                        // MAJORITY_AND_PERSIST_TO_ACTIVE: Highest durability
-                        DurabilityLevel durabilityLevel;
-                        switch (transactionDurability.toUpperCase()) {
-                            case "MAJORITY":
-                                durabilityLevel = DurabilityLevel.MAJORITY;
-                                logger.info("🔒 Transaction durability: MAJORITY (requires replicas)");
-                                break;
-                            case "MAJORITY_AND_PERSIST_TO_ACTIVE":
-                                durabilityLevel = DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE;
-                                logger.info("🔒 Transaction durability: MAJORITY_AND_PERSIST_TO_ACTIVE (highest durability)");
-                                break;
-                            case "PERSIST_TO_MAJORITY":
-                                durabilityLevel = DurabilityLevel.PERSIST_TO_MAJORITY;
-                                logger.info("🔒 Transaction durability: PERSIST_TO_MAJORITY");
-                                break;
-                            case "NONE":
-                            default:
-                                durabilityLevel = DurabilityLevel.NONE;
-                                logger.info("⚠️  Transaction durability: NONE (suitable for single-node development only)");
-                                break;
-                        }
-                        transactions.durabilityLevel(durabilityLevel);
+            // Always configure transactions with sensible defaults for FHIR bundles
+            // FHIR bundles can contain hundreds of resources and need longer timeouts than SDK default (15s)
+            envBuilder.transactionsConfig(transactions -> {
+                // Set transaction timeout - default to 120 seconds for large FHIR bundles
+                // Users can override lower via config.yaml if needed
+                int timeoutSeconds = transactionTimeoutSeconds != null ? transactionTimeoutSeconds : 120;
+                transactions.timeout(Duration.ofSeconds(timeoutSeconds));
+                
+                if (transactionTimeoutSeconds == null) {
+                    logger.info("🔒 Transaction timeout: {}s (default for FHIR bundles - override in config.yaml if needed)", timeoutSeconds);
+                } else {
+                    logger.info("🔒 Transaction timeout: {}s (from config.yaml)", timeoutSeconds);
+                }
+                
+                if (transactionDurability != null) {
+                    // Configure transaction durability based on cluster setup
+                    // NONE: Single-node development (no replicas needed)
+                    // MAJORITY: Production multi-node (recommended)
+                    // MAJORITY_AND_PERSIST_TO_ACTIVE: Highest durability
+                    DurabilityLevel durabilityLevel;
+                    switch (transactionDurability.toUpperCase()) {
+                        case "MAJORITY":
+                            durabilityLevel = DurabilityLevel.MAJORITY;
+                            logger.info("🔒 Transaction durability: MAJORITY (requires replicas)");
+                            break;
+                        case "MAJORITY_AND_PERSIST_TO_ACTIVE":
+                            durabilityLevel = DurabilityLevel.MAJORITY_AND_PERSIST_TO_ACTIVE;
+                            logger.info("🔒 Transaction durability: MAJORITY_AND_PERSIST_TO_ACTIVE (highest durability)");
+                            break;
+                        case "PERSIST_TO_MAJORITY":
+                            durabilityLevel = DurabilityLevel.PERSIST_TO_MAJORITY;
+                            logger.info("🔒 Transaction durability: PERSIST_TO_MAJORITY");
+                            break;
+                        case "NONE":
+                        default:
+                            durabilityLevel = DurabilityLevel.NONE;
+                            logger.info("⚠️  Transaction durability: NONE (suitable for single-node development only)");
+                            break;
                     }
-                    if (transactionTimeoutSeconds != null) {
-                        transactions.timeout(Duration.ofSeconds(transactionTimeoutSeconds));
-                    }
-                });
-            }
+                    transactions.durabilityLevel(durabilityLevel);
+                }
+            });
             
             // Enable TLS/SSL if required (for Capella or secure connections)
             if (request.isSslEnabled() || request.getConnectionString().startsWith("couchbases://")) {
@@ -240,15 +247,12 @@ public class ConnectionService {
                 logger.info("   ✅ transactionDurability: {} (from config.yaml)", transactionDurability);
                 hasConfiguredParams = true;
             }
-            if (transactionTimeoutSeconds != null) {
-                logger.info("   ✅ transactionTimeout: {}s (from config.yaml)", transactionTimeoutSeconds);
-                hasConfiguredParams = true;
-            }
+            // Note: transactionTimeout is now logged in the transactionsConfig block above
             
             if (!hasConfiguredParams) {
-                logger.info("   ℹ️  Using Couchbase Java SDK defaults (no overrides configured)");
+                logger.info("   ℹ️  Using Couchbase Java SDK defaults + FHIR-optimized transaction timeout (120s)");
             } else {
-                logger.info("   ℹ️  Other parameters using Couchbase Java SDK defaults");
+                logger.info("   ℹ️  Other parameters using Couchbase Java SDK defaults + FHIR-optimized transaction timeout");
             }
             
             Cluster cluster = Cluster.connect(request.getConnectionString(), options);

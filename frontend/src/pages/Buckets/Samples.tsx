@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Box, Alert, AlertTitle } from "@mui/material";
 import SyntheaSamplesCard from "../../components/SyntheaSamplesCard";
 import USCoreSamplesCard from "../../components/USCoreSamplesCard";
+import OncSamplesCard from "../../components/OncSamplesCard";
 import LoadSamplesDialog from "../../components/LoadSamplesDialog";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useBucketStore } from "../../store/bucketStore";
@@ -9,7 +10,7 @@ import { useBucketStore } from "../../store/bucketStore";
 const Samples: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSampleType, setSelectedSampleType] = useState<
-    "synthea" | "uscore"
+    "synthea" | "uscore" | "onc"
   >("synthea");
 
   // Get connection and bucket information (single-tenant mode)
@@ -17,7 +18,7 @@ const Samples: React.FC = () => {
   const bucketStore = useBucketStore();
   const bucket = bucketStore.bucket;
 
-  const handleCardClick = (sampleType: "synthea" | "uscore") => {
+  const handleCardClick = (sampleType: "synthea" | "uscore" | "onc") => {
     setSelectedSampleType(sampleType);
     setDialogOpen(true);
   };
@@ -71,6 +72,10 @@ const Samples: React.FC = () => {
         />
         <USCoreSamplesCard
           onClick={() => handleCardClick("uscore")}
+          disabled={!hasRequiredSelections}
+        />
+        <OncSamplesCard
+          onClick={() => handleCardClick("onc")}
           disabled={!hasRequiredSelections}
         />
       </Box>
