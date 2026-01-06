@@ -176,7 +176,7 @@ frontend http-in
 """
     
     cfg += """    # Route backend services (API, OAuth, FHIR, health)
-    acl is_backend path_beg /api /fhir /oauth2 /login /consent /.well-known /health
+    acl is_backend path_beg /api /fhir /oauth2 /login /consent /patient-picker /.well-known /health
     use_backend backend-fhir-server if is_backend
     
     # Default: route to frontend Admin UI
