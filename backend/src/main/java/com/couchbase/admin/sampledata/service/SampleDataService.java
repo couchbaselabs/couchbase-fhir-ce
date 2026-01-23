@@ -245,7 +245,7 @@ public class SampleDataService {
     /**
      * Process a FHIR bundle using our sophisticated Bundle processor with lenient validation for sample data
      */
-    private Map<String, Integer> processBundle(String bundleJson, String connectionName, String bucketName) {
+    public Map<String, Integer> processBundle(String bundleJson, String connectionName, String bucketName) {
         Map<String, Integer> counts = new HashMap<>();
         int resourceCount = 0;
         int patientCount = 0;
